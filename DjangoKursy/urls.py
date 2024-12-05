@@ -19,7 +19,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
-from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view
+from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view, register_view, activate_view
 
 
 router = DefaultRouter()
@@ -31,4 +31,6 @@ urlpatterns = [
     path('api/verify-email/', verify_email, name='verify_email'),
     path('login/', login_view, name='login'),
     path('', home_view, name='home'),
+    path('register/', register_view, name='register'),
+    path('activate/', activate_view, name='activate'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

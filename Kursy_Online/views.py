@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from .models import User, VerificationCode, LoginHistory
 from .serializers import UserRegistrationSerializer, UserSerializer
-
+from django.core.mail import EmailMessage
 class AuthViewSet(viewsets.ViewSet):
     def get_permissions(self):
         if self.action in ['register', 'login', 'request_password_reset', 'reset_password_confirm']:
@@ -170,7 +170,7 @@ def verify_email(request):
     except VerificationCode.DoesNotExist:
         return Response({  'error': 'Invalid or expired verification code' }, status=status.HTTP_400_BAD_REQUEST)
 
-@action(detail=False, methods=['post'])
+
 def login_view(request):
     if request.method == 'POST':
         username = request.POST.get('username')
@@ -188,5 +188,74 @@ def login_view(request):
 
     return render(request, 'login.html')
 
+def register_view(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+        confirm_password = request.POST.get('confirm_password')
+
+        if password != confirm_password:
+            messages.error(request, 'Hasła nie są identyczne!')
+            return render(request, 'register.html')
+
+        if User.objects.filter(username=username).exists():
+            messages.error(request, 'Nazwa użytkownika jest już zajęta!')
+            return render(request, 'register.html')
+
+        if User.objects.filter(email=email).exists():
+            messages.error(request, 'Email jest już zarejestrowany')
+            return render(request, 'register.html')
+
+        user = User.objects.create_user(username=username, email=email, password=password)
+        user.is_active = False  # Konto nieaktywne
+        user.save()
+
+        # Wysyłanie e-maila aktywacyjnego
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        activation_link = f"{request.build_absolute_uri('/activate/')}?uid={uid}&token={token}"
+        subject = 'Potwierdz rejestracje konta!'
+
+        message = f"""
+                <p>Cześć {username},</p>
+                <br>
+                <p>Dziękujemy za rejestracje. Naciśnij prosze poniższy link aby aktywować konto:</p>
+                <br>
+                <p><a href="{activation_link}">Aktywuj</a></p>
+                """
+        email_message = EmailMessage(
+            subject=subject,
+            body=message,
+            from_email=settings.EMAIL_HOST_USER,
+            to=[email],
+        )
+
+        email_message.content_subtype = 'html'
+        email_message.send()
+
+        messages.success(request, 'Zarejestrowano pomyślnie. Sprawdź swoją pocztę.')
+        return redirect('login')
+
+    return render(request, 'register.html')
+
+def activate_view(request):
+    uid = request.GET.get('uid')
+    token = request.GET.get('token')
+
+    try:
+        user_id = force_str(urlsafe_base64_decode(uid))
+        user = User.objects.get(pk=user_id)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is not None and default_token_generator.check_token(user, token):
+        user.is_active = True
+        user.save()
+        messages.success(request, 'Twoje konto zostało aktywowane')
+        return redirect('login')
+    else:
+        messages.error(request, 'Link wygasł lub jest niepoprawny')
+        return redirect('home')
 def home_view(request):
     return render(request, 'home.html', {'title': 'Strona Główna'})

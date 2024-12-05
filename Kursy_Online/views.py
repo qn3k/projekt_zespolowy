@@ -1,4 +1,6 @@
 from django.contrib.auth import login, logout, authenticate
+from django.shortcuts import render, redirect
+from django.contrib import messages
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
@@ -167,3 +169,24 @@ def verify_email(request):
         return Response({'message': 'Email verified successfully'})
     except VerificationCode.DoesNotExist:
         return Response({  'error': 'Invalid or expired verification code' }, status=status.HTTP_400_BAD_REQUEST)
+
+@action(detail=False, methods=['post'])
+def login_view(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        print(f"Attempting login: username={username}, password={password}")
+
+        user = authenticate(request, username=username, password=password)
+
+        if user is not None:
+            login(request, user)
+            return redirect('login')
+        else:
+            print(f"Failed login attempt: username={username}, password={password}")
+            messages.error(request, 'Invalid username or password')
+
+    return render(request, 'login.html')
+
+def home_view(request):
+    return render(request, 'home.html', {'title': 'Strona Główna'})

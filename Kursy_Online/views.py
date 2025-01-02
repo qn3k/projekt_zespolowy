@@ -14,8 +14,15 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
-from .models import User, VerificationCode, LoginHistory
-from .serializers import UserRegistrationSerializer, UserSerializer
+from django.db.models import Max
+from django.db import models, transaction
+from .code_execution import CodeExecutionService
+from .models import User, VerificationCode, LoginHistory, Course, Chapter, Page, UserProgress, ContentPage, \
+    CodingExercise
+from .serializers import UserRegistrationSerializer, UserSerializer, CourseSerializer, ChapterSerializer, \
+    PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, \
+    TestResultsSerializer, TestCaseSerializer, ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
+    ContentImageCreateSerializer, ContentVideoCreateSerializer
 from django.core.mail import EmailMessage
 class AuthViewSet(viewsets.ViewSet):
     def get_permissions(self):
@@ -147,6 +154,281 @@ class AuthViewSet(viewsets.ViewSet):
         return Response({'error': 'Invalid reset link'}, status=status.HTTP_400_BAD_REQUEST)
 
 
+class CourseViewSet(viewsets.ModelViewSet):
+    queryset = Course.objects.all()
+    serializer_class = CourseSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Course.objects.all()
+
+    @action(detail=True, methods=['post'])
+    def add_chapter(self, request, pk=None):
+        course = self.get_object()
+        serializer = ChapterSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(course=course)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+
+@action(detail=True, methods=['GET'])
+def progress(self, request, pk=None):
+    course = self.get_object()
+    user_progress = UserProgress.objects.filter(
+        user=request.user,
+        page__chapter__course=course
+    ).select_related('page')
+    total_pages = Page.objects.filter(chapter__course=course).count()
+    completed_pages = user_progress.filter(completed=True).count()
+    pages_progress = []
+    for progress in user_progress:
+        pages_progress.append({
+            'page_id': progress.page.id,
+            'title': progress.page.title,
+            'completed': progress.completed,
+            'completed_at': progress.completed_at
+        })
+
+    return Response({
+        'course_id': course.id,
+        'total_pages': total_pages,
+        'completed_pages': completed_pages,
+        'progress_percentage': (completed_pages / total_pages * 100) if total_pages > 0 else 0,
+        'pages_progress': pages_progress
+    })
+class ChapterViewSet(viewsets.ModelViewSet):
+    queryset = Course.objects.all()
+    serializer_class = ChapterSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        course_id = self.kwargs.get('course_pk')
+        return Chapter.objects.filter(course_id=course_id)
+
+
+class PageViewSet(viewsets.ModelViewSet):
+    serializer_class = PageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Page.objects.filter(chapter_id=self.kwargs.get('chapter_pk'))
+
+    def perform_create(self, serializer):
+        chapter = Chapter.objects.get(id=self.kwargs.get('chapter_pk'))
+        max_order = Page.objects.filter(chapter=chapter).aggregate(Max('order'))['order__max']
+        next_order = 1 if max_order is None else max_order + 1
+        page = serializer.save(chapter=chapter, order=next_order)
+        if page.type == 'CONTENT':
+            ContentPage.objects.create(page=page, content="")
+
+    def get_serializer_class(self):
+        if self.action == 'add_content_image':
+            return ContentImageCreateSerializer
+        elif self.action == 'add_content_video':
+            return ContentVideoCreateSerializer
+        return super().get_serializer_class()
+
+    @action(detail=True, methods=['PATCH'])
+    def update_order(self, request, course_pk=None, chapter_pk=None, pk=None):
+        page = self.get_object()
+        new_order = request.data.get('order')
+
+        if new_order is None:
+            return Response({'error': 'Nie podano nowej kolejności'}, status=400)
+
+        try:
+            new_order = int(new_order)
+        except (TypeError, ValueError):
+            return Response({'error': 'Kolejność musi być liczbą'}, status=400)
+
+        with transaction.atomic():
+            current_order = page.order
+            pages = Page.objects.filter(chapter_id=chapter_pk)
+            max_order = pages.aggregate(max_order=models.Max('order'))['max_order'] or 0
+
+            if new_order < 1 or new_order > max_order:
+                return Response({'error': f'Kolejność musi być między 1 a {max_order}'}, status=400)
+
+            page.order = max_order + 1
+            page.save()
+
+            if new_order > current_order:
+                pages.filter(
+                    order__gt=current_order,
+                    order__lte=new_order
+                ).exclude(id=page.id).update(order=models.F('order') - 1)
+            else:
+                pages.filter(
+                    order__lt=current_order,
+                    order__gte=new_order
+                ).exclude(id=page.id).update(order=models.F('order') + 1)
+
+            page.order = new_order
+            page.save()
+
+        return Response({
+            'message': f'Zmieniono kolejność z {current_order} na {new_order}',
+            'current_order': new_order
+        })
+
+    @action(detail=True, methods=['post'])
+    def add_quiz_question(self, request, *args, **kwargs):
+        page = self.get_object()
+
+        if page.type != 'QUIZ':
+            return Response(
+                {'error': 'Ta strona nie jest quizem'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not hasattr(page, 'quiz'):
+            return Response(
+                {'error': 'Quiz nie został jeszcze utworzony dla tej strony'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = QuizQuestionSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(quiz=page.quiz)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def add_content_image(self, request, *args, **kwargs):
+        page = self.get_object()
+
+        if page.type != 'CONTENT':
+            return Response(
+                {'error': 'Ta strona nie jest stroną z treścią'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        content_page, created = ContentPage.objects.get_or_create(
+            page=page,
+            defaults={'content': ''}
+        )
+        serializer = ContentImageCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(content_page=content_page)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+    @action(detail=True, methods=['post'])
+    def add_content_video(self, request, *args, **kwargs):
+        page = self.get_object()
+
+        if page.type != 'CONTENT':
+            return Response(
+                {'error': 'Ta strona nie jest stroną z treścią'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        content_page, created = ContentPage.objects.get_or_create(
+            page=page,
+            defaults={'content': ''}
+        )
+
+        serializer = ContentVideoSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(content_page=content_page)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def add_test_case(self, request, *args, **kwargs):
+        page = self.get_object()
+        page.refresh_from_db()
+
+        if page.type != 'CODING':
+            return Response(
+                {'error': 'Ta strona nie jest zadaniem programistycznym'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        coding_exercise = CodingExercise.objects.filter(page=page).first()
+        if not coding_exercise:
+            return Response(
+                {'error': 'Zadanie programistyczne nie zostało jeszcze utworzone'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = TestCaseSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(exercise=coding_exercise)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def update_content(self, request, pk=None):
+        page = self.get_object()
+        if page.type == 'CONTENT':
+            serializer = ContentPageSerializer(page.content_page, data=request.data)
+        elif page.type == 'QUIZ':
+            serializer = QuizSerializer(page.quiz, data=request.data)
+        elif page.type == 'CODING':
+            serializer = CodingExerciseSerializer(page.coding_exercise, data=request.data)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+    @action(detail=True, methods=['post'])
+    def submit_solution(self, request, course_pk=None, chapter_pk=None, pk=None):
+        page = self.get_object()
+
+        if page.type != 'CODING':
+            return Response(
+                {'error': 'Ta strona nie jest zadaniem programistycznym'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            coding_exercise = CodingExercise.objects.get(page=page)
+        except CodingExercise.DoesNotExist:
+            return Response(
+                {'error': 'Zadanie programistyczne nie zostało znalezione'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = CodeSubmissionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        user_code = serializer.validated_data['code']
+        test_cases = coding_exercise.test_cases.all()
+
+        if not test_cases.exists():
+            return Response(
+                {'error': 'Brak przypadków testowych dla tego zadania'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        executor = CodeExecutionService()
+        results = executor.run_all_tests(
+            user_code,
+            [
+                {
+                    'input_data': test.input_data,
+                    'expected_output': test.expected_output,
+                    'is_hidden': test.is_hidden
+                }
+                for test in test_cases
+            ]
+        )
+
+        if results['success']:
+            UserProgress.objects.update_or_create(
+                user=request.user,
+                page=page,
+                defaults={
+                    'completed': True,
+                    'completed_at': timezone.now()
+                }
+            )
+
+        results_serializer = TestResultsSerializer(results)
+        return Response(results_serializer.data)
 @api_view(['GET'])
 def verify_email(request):
     code = request.GET.get('code')
@@ -208,10 +490,10 @@ def register_view(request):
             return render(request, 'register.html')
 
         user = User.objects.create_user(username=username, email=email, password=password)
-        user.is_active = False  # Konto nieaktywne
+        user.is_active = False # Konto nieaktywne
         user.save()
-
-        # Wysyłanie e-maila aktywacyjnego
+            
+        # WysyĹ‚anie e-maila aktywacyjnego
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
         activation_link = f"{request.build_absolute_uri('/activate/')}?uid={uid}&token={token}"
@@ -259,3 +541,5 @@ def activate_view(request):
         return redirect('home')
 def home_view(request):
     return render(request, 'home.html', {'title': 'Strona Główna'})
+def test_view(request):
+    return render(request, 'test.html', {'title': 'test'})

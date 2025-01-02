@@ -18,19 +18,36 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from rest_framework_nested import routers
 from rest_framework.routers import DefaultRouter
-from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view, register_view, activate_view
+from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view, register_view, activate_view, CourseViewSet, ChapterViewSet, PageViewSet, test_view
 
 
 router = DefaultRouter()
 router.register(r'auth', AuthViewSet, basename='auth')
+router.register(r'courses', CourseViewSet)
+courses_router = routers.NestedDefaultRouter(router, r'courses', lookup='course')
+courses_router.register(r'chapters', ChapterViewSet, basename='course-chapters')
 
+chapters_router = routers.NestedDefaultRouter(courses_router, r'chapters', lookup='chapter')
+chapters_router.register(r'pages', PageViewSet, basename='chapter-pages')
+
+PageViewSet.extra_actions = [
+    {'url_path': 'add_quiz_question', 'url_name': 'add-quiz-question'},
+    {'url_path': 'add_content_image', 'url_name': 'add-content-image'},
+    {'url_path': 'add_content_video', 'url_name': 'add-content-video'},
+    {'url_path': 'add_test_case', 'url_name': 'add-test-case'},
+    {'url_path': 'update_order', 'url_name': 'update-order'},
+]
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api/verify-email/', verify_email, name='verify_email'),
+    path('api/', include(courses_router.urls)),
+    path('api/', include(chapters_router.urls)),
     path('login/', login_view, name='login'),
     path('', home_view, name='home'),
     path('register/', register_view, name='register'),
     path('activate/', activate_view, name='activate'),
+    path('test/', test_view, name='test'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

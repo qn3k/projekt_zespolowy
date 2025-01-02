@@ -206,7 +206,9 @@ class ChapterViewSet(viewsets.ModelViewSet):
         course_id = self.kwargs.get('course_pk')
         return Chapter.objects.filter(course_id=course_id)
 
-
+    def perform_create(self, serializer):
+        course_id = self.kwargs.get('course_pk')
+        serializer.save(course_id=course_id)
 class PageViewSet(viewsets.ModelViewSet):
     serializer_class = PageSerializer
     permission_classes = [IsAuthenticated]
@@ -218,9 +220,7 @@ class PageViewSet(viewsets.ModelViewSet):
         chapter = Chapter.objects.get(id=self.kwargs.get('chapter_pk'))
         max_order = Page.objects.filter(chapter=chapter).aggregate(Max('order'))['order__max']
         next_order = 1 if max_order is None else max_order + 1
-        page = serializer.save(chapter=chapter, order=next_order)
-        if page.type == 'CONTENT':
-            ContentPage.objects.create(page=page, content="")
+        serializer.save(chapter=chapter, order=next_order)
 
     def get_serializer_class(self):
         if self.action == 'add_content_image':
@@ -492,7 +492,7 @@ def register_view(request):
         user = User.objects.create_user(username=username, email=email, password=password)
         user.is_active = False # Konto nieaktywne
         user.save()
-            
+
         # WysyĹ‚anie e-maila aktywacyjnego
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)

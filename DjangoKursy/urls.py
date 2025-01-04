@@ -20,7 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_nested import routers
 from rest_framework.routers import DefaultRouter
-from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view, register_view, activate_view, CourseViewSet, ChapterViewSet, PageViewSet, test_view
+from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view, register_view, activate_view, CourseViewSet, ChapterViewSet, PageViewSet, test_view, password_reset_request_view, password_reset_confirm_view
 
 
 router = DefaultRouter()
@@ -49,5 +49,7 @@ urlpatterns = [
     path('', home_view, name='home'),
     path('register/', register_view, name='register'),
     path('activate/', activate_view, name='activate'),
+    path('reset-password/', password_reset_request_view, name='request_password_reset'),
+    path('reset-password-confirm/<uidb64>/<token>/', password_reset_confirm_view, name='password_reset_confirm'),
     path('test/', test_view, name='test'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

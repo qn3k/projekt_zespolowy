@@ -5,6 +5,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.utils.crypto import get_random_string
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
@@ -543,3 +544,79 @@ def home_view(request):
     return render(request, 'home.html', {'title': 'Strona Główna'})
 def test_view(request):
     return render(request, 'test.html', {'title': 'test'})
+
+
+def password_reset_request_view(request):
+    if request.method == "POST":
+        email = request.POST.get('email')
+
+        if not email:
+            messages.error(request, 'Proszę podać adres e-mail.')
+            return render(request, 'password_reset_request.html')
+
+        try:
+            user = User.objects.get(email=email)
+
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            reset_url = f"{request.build_absolute_uri('/reset-password-confirm/')}{uid}/{token}/"
+
+            subject = 'Reset your password'
+            message = f"""
+                <p>Cześć,</p>
+                <p>Poproszono o zresetowanie hasła do Twojego konta.</p>
+                <p>Aby zresetować hasło, kliknij w poniższy link:</p>
+                <br>
+                <p><a href="{reset_url}">Zresetuj hasło</a></p>
+                <p>Jeśli nie prosiłeś o zresetowanie hasła, zignoruj tę wiadomość.</p>
+            """
+            email_message = EmailMessage(
+                subject=subject,
+                body=message,
+                from_email=settings.EMAIL_HOST_USER,
+                to=[email],
+            )
+            email_message.content_subtype = 'html'
+            email_message.send()
+
+            messages.success(request, 'Link do resetu hasła został wysłany na Twój adres e-mail.')
+        except User.DoesNotExist:
+            messages.error(request, 'Nie znaleziono konta z podanym adresem e-mail.')
+
+        return redirect('login')
+
+    return render(request, 'password_reset_request.html')
+
+
+def password_reset_confirm_view(request, uidb64, token):
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is not None and default_token_generator.check_token(user, token):
+        if request.method == 'POST':
+            new_password = request.POST.get('new_password')
+            confirm_password = request.POST.get('confirm_password')
+
+            if new_password != confirm_password:
+                messages.error(request, 'Hasła nie są identyczne!')
+                return redirect('password_reset_confirm', uidb64=uidb64, token=token)
+
+            try:
+                validate_password(new_password, user)
+                user.set_password(new_password)
+                user.last_password_change = timezone.now()
+                user.save()
+                messages.success(request, 'Hasło zostało pomyślnie zresetowane.')
+                return redirect('login')
+            except ValidationError as e:
+                for error in e.messages:
+                    messages.error(request, error)
+                return redirect('password_reset_confirm', uidb64=uidb64, token=token)
+    else:
+        messages.error(request, 'Link resetowania hasła jest nieprawidłowy lub wygasł.')
+        return redirect('home')
+
+    return render(request, 'password_reset_confirm.html', {'uidb64': uidb64, 'token': token})

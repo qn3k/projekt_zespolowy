@@ -52,6 +52,24 @@ class Course(models.Model):
     is_published = models.BooleanField(default=False)
 
 
+class CourseReview(models.Model):
+    RATING_CHOICES = [
+        (1, '1'),
+        (2, '2'),
+        (3, '3'),
+        (4, '4'),
+        (5, '5'),
+    ]
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='reviews')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    rating = models.IntegerField(choices=RATING_CHOICES)
+    comment = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['course', 'user']
+
 class Chapter(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='chapters')
     title = models.CharField(max_length=255)

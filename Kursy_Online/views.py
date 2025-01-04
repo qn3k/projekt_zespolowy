@@ -15,15 +15,11 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
-from django.db.models import Max
+from django.db.models import Max, Avg, Count
 from django.db import models, transaction
 from .code_execution import CodeExecutionService
-from .models import User, VerificationCode, LoginHistory, Course, Chapter, Page, UserProgress, ContentPage, \
-    CodingExercise
-from .serializers import UserRegistrationSerializer, UserSerializer, CourseSerializer, ChapterSerializer, \
-    PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, \
-    TestResultsSerializer, TestCaseSerializer, ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
-    ContentImageCreateSerializer, ContentVideoCreateSerializer
+from .models import User, VerificationCode, LoginHistory, Course, Chapter, Page, UserProgress, ContentPage, CodingExercise, CourseReview
+from .serializers import UserRegistrationSerializer, UserSerializer, CourseSerializer, ChapterSerializer,PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, TestResultsSerializer, TestCaseSerializer, ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer,ContentImageCreateSerializer, ContentVideoCreateSerializer, CourseReviewSerializer
 from django.core.mail import EmailMessage
 class AuthViewSet(viewsets.ViewSet):
     def get_permissions(self):
@@ -156,13 +152,14 @@ class AuthViewSet(viewsets.ViewSet):
 
 
 class CourseViewSet(viewsets.ModelViewSet):
-    queryset = Course.objects.all()
     serializer_class = CourseSerializer
     permission_classes = [IsAuthenticated]
-
+    queryset = Course.objects.all()
     def get_queryset(self):
-        return Course.objects.all()
-
+        return Course.objects.annotate(
+            average_rating=Avg('reviews__rating'),
+            total_reviews=Count('reviews')
+        ).prefetch_related('reviews', 'chapters', 'technologies')
     @action(detail=True, methods=['post'])
     def add_chapter(self, request, pk=None):
         course = self.get_object()
@@ -172,7 +169,28 @@ class CourseViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         return Response(serializer.errors, status=400)
 
+    @action(detail=True, methods=['POST'])
+    def add_review(self, request, pk=None):
+        course = self.get_object()
 
+        if CourseReview.objects.filter(course=course, user=request.user).exists():
+            return Response({'error': 'Kurs został już przez Ciebie oceniony.'}, status=400)
+
+        review = CourseReview.objects.create(
+            course=course,
+            user=request.user,
+            rating=request.data.get('rating'),
+            comment=request.data.get('comment', '')
+        )
+        serializer = CourseReviewSerializer(review)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['GET'])
+    def reviews(self, request, pk=None):
+        course = self.get_object()
+        reviews = CourseReview.objects.filter(course=course)
+        serializer = CourseReviewSerializer(reviews, many=True)
+        return Response(serializer.data)
 @action(detail=True, methods=['GET'])
 def progress(self, request, pk=None):
     course = self.get_object()

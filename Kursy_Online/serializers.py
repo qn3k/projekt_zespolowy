@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from .models import Course, LoginHistory,Technology, Course, Chapter, Page, ContentPage, ContentImage, ContentVideo, Quiz, QuizQuestion, QuizAnswer, CodingExercise, TestCase
+from .models import Course, LoginHistory, Technology, Course, Chapter, Page, ContentPage, ContentImage, ContentVideo, Quiz, QuizQuestion, QuizAnswer, CodingExercise, TestCase, CourseReview
 
 User = get_user_model()
 
@@ -193,16 +193,24 @@ class ChapterSerializer(serializers.ModelSerializer):
         model = Chapter
         fields = ['id', 'title', 'order', 'pages']
 
+class CourseReviewSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = CourseReview
+        fields = ['id', 'course', 'user', 'rating', 'comment', 'created_at']
+        read_only_fields = ['course', 'user']
 
 class CourseSerializer(serializers.ModelSerializer):
     chapters = ChapterSerializer(many=True, required=False)
     technologies = TechnologySerializer(many=True, required=False)
-
+    reviews = CourseReviewSerializer(many=True, read_only=True)
+    average_rating = serializers.FloatField(read_only=True)
+    total_reviews = serializers.IntegerField(read_only=True)
     class Meta:
         model = Course
-        fields = ['id', 'title', 'description', 'cover_image', 'price',
-                  'level', 'technologies', 'instructor', 'created_at',
-                  'updated_at', 'is_published', 'chapters']
+        fields = ['id', 'title', 'description', 'cover_image', 'price', 'level', 'technologies', 'instructor', 'created_at', 'updated_at', 'is_published', 'chapters', 'reviews', 'average_rating', 'total_reviews']
+
 
     def create(self, validated_data):
         chapters_data = validated_data.pop('chapters', [])
@@ -220,6 +228,9 @@ class CourseSerializer(serializers.ModelSerializer):
                 chapter_serializer.save(course=course)
 
         return course
+
+
+
 class ContentImageCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContentImage

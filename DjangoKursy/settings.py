@@ -153,5 +153,5 @@ EMAIL_HOST_USER = 'kapipvp@gmail.com'
 EMAIL_HOST_PASSWORD = 'uevr xheg aiua bmmt'
 
 STRIPE_WH = 'stripewh'
-STRIPE_PK = 'pk_test_51QddGRBC073Dj4GqKlpdjENvFLgvDycmVR4ihHihdNJdwBeUY4Y5xEN1cSvjQ0uhBMYASUHz9yi5UTFunzkLI26X00C51H3t3Q'
-STRIPE_SK = 'sk_test_51QddGRBC073Dj4GqgLVBGmBEukewANEODHpObNrlrPror5DyBxBd11S21U1DniV6BUfPvDWNtiDuGFn7fqSmwdiQ00JR91W9m4'
+STRIPE_PK = 'x'
+STRIPE_SK = 'x'

@@ -20,12 +20,14 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_nested import routers
 from rest_framework.routers import DefaultRouter
-from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view, register_view, activate_view, CourseViewSet, ChapterViewSet, PageViewSet, test_view, password_reset_request_view, password_reset_confirm_view
-
+from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view, register_view, activate_view, \
+    CourseViewSet, ChapterViewSet, PageViewSet, test_view, password_reset_request_view, password_reset_confirm_view, \
+    PaymentViewSet
 
 router = DefaultRouter()
 router.register(r'auth', AuthViewSet, basename='auth')
 router.register(r'courses', CourseViewSet)
+router.register(r'payments', PaymentViewSet, basename='payments')
 courses_router = routers.NestedDefaultRouter(router, r'courses', lookup='course')
 courses_router.register(r'chapters', ChapterViewSet, basename='course-chapters')
 

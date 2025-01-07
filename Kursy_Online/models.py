@@ -26,6 +26,7 @@ class VerificationCode(models.Model):
     expires_at = models.DateTimeField()
     is_used = models.BooleanField(default=False)
 # Model kursu
+
 class Technology(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
@@ -171,4 +172,25 @@ class UserProgress(models.Model):
     completed = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
     last_attempt = models.DateTimeField(auto_now=True)
+class Payment(models.Model):
+    PAYMENT_CHOICES = [
+        ('PAYPAL', 'PayPal'),
+     # Blik nie działa w wersji testowej
+     #  ('BLIK', 'Blik'),
+        ('CARD', 'Card')
 
+    ]
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('ACCEPTED', 'Accepted'),
+        ('REJECTED', 'Rejected')
+    ]
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='payments')
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    method = models.CharField(max_length=20, choices=PAYMENT_CHOICES, default='PAYPAL')
+    stripe_payment_id = models.CharField(max_length=255, null=True, blank=True)
+    class Meta:
+        unique_together = ['user', 'course']

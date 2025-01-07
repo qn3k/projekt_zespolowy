@@ -18,9 +18,11 @@ from rest_framework.exceptions import ValidationError
 from django.db.models import Max, Avg, Count
 from django.db import models, transaction
 from .code_execution import CodeExecutionService
-from .models import User, VerificationCode, LoginHistory, Course, Chapter, Page, UserProgress, ContentPage, CodingExercise, CourseReview
+from .models import User, VerificationCode, LoginHistory, Course, Chapter, Page, UserProgress, ContentPage, \
+    CodingExercise, CourseReview, Payment
 from .serializers import UserRegistrationSerializer, UserSerializer, CourseSerializer, ChapterSerializer,PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, TestResultsSerializer, TestCaseSerializer, ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer,ContentImageCreateSerializer, ContentVideoCreateSerializer, CourseReviewSerializer
 from django.core.mail import EmailMessage
+import stripe
 class AuthViewSet(viewsets.ViewSet):
     def get_permissions(self):
         if self.action in ['register', 'login', 'request_password_reset', 'reset_password_confirm']:
@@ -448,6 +450,8 @@ class PageViewSet(viewsets.ModelViewSet):
 
         results_serializer = TestResultsSerializer(results)
         return Response(results_serializer.data)
+
+
 @api_view(['GET'])
 def verify_email(request):
     code = request.GET.get('code')
@@ -467,10 +471,60 @@ def verify_email(request):
         verification.is_used = True
         verification.save()
 
-        return Response({'message': 'Email verified successfully'})
+        return Response({'message': 'Zweryfikowano adres e-mail.'})
     except VerificationCode.DoesNotExist:
-        return Response({  'error': 'Invalid or expired verification code' }, status=status.HTTP_400_BAD_REQUEST)
+        return Response({  'error': 'Nieprawidłowy kod weryfikacyjny.' }, status=status.HTTP_400_BAD_REQUEST)
 
+
+class PaymentViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['POST'], url_path='create/(?P<course_id>[^/.]+)')
+    def create_payment(self, request, course_id=None):
+        stripe.api_key = settings.STRIPE_SK
+        try:
+            course = Course.objects.get(id=course_id)
+            method = request.data.get('method', 'PAYPAL')
+            if Payment.objects.filter(user=request.user, course=course, status='ACCEPTED').exists():
+                return Response({'error': 'Już dokonałeś płatności za ten kurs'}, status=400)
+            if method not in ['PAYPAL','CARD']:
+                return Response({'error': 'Nie obsługujemy tej metody płatności.'}, status=400)
+            id = stripe.PaymentIntent.create(
+                amount=int(course.price * 100),
+                currency='pln',
+                payment_method_types=['card', 'paypal'],
+                metadata={'course_id': course.id, 'user_id': request.user.id}
+            )
+            payment = Payment.objects.create(
+                user=request.user,
+                course=course,
+                price=course.price,
+                stripe_payment_id=id.id,
+                status='PENDING'
+            )
+
+            return Response({
+                'clientSecret': id.client_secret,
+                'publicKey': settings.STRIPE_PK
+            })
+
+        except Course.DoesNotExist:
+            return Response({'error': 'Wystąpił błąd ze znalezieniem kursu.'}, status=404)
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+
+    @action(detail=False, methods=['POST'], url_path='confirm/(?P<payment_intent_id>[^/.]+)')
+    def confirm_payment(self, request, *args, **kwargs):
+        stripe_payment_id = kwargs.get('payment_intent_id')
+        try:
+            payment = Payment.objects.get(stripe_payment_id=stripe_payment_id)
+            payment.status = 'ACCEPTED'
+            payment.save()
+
+            return Response({'message': 'Płatność została potwierdzona'})
+
+        except Payment.DoesNotExist:
+            return Response({'error': 'Problem z platnoscia.'}, status=404)
 
 def login_view(request):
     if request.method == 'POST':

@@ -259,12 +259,12 @@ class PublicCourseSerializer(serializers.ModelSerializer):
                 'type': page.type
             } for page in chapter.pages.all()]
         } for chapter in chapters]
+
 class ContentImageCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContentImage
         fields = ['id', 'content_page', 'image', 'caption', 'order']
         read_only_fields = ['content_page']
-
 class ContentVideoCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContentVideo
@@ -273,14 +273,3 @@ class ContentVideoCreateSerializer(serializers.ModelSerializer):
 class CodeSubmissionSerializer(serializers.Serializer):
     code = serializers.CharField(required=True)
     language = serializers.ChoiceField(choices=['python'], required=True)
-
-class TestCaseResultSerializer(serializers.Serializer):
-    success = serializers.BooleanField()
-    error = serializers.CharField(allow_null=True)
-    execution_time = serializers.FloatField(allow_null=True)
-    output = serializers.CharField(allow_null=True)
-    stdout = serializers.CharField(allow_null=True)
-
-class TestResultsSerializer(serializers.Serializer):
-    success = serializers.BooleanField()
-    results = TestCaseResultSerializer(many=True)

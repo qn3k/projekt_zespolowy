@@ -15,15 +15,17 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
-from django.db.models import Max, Avg, Count
+from rest_framework.pagination import PageNumberPagination
+from django.db.models import Max,Min, Avg, Count
 from django.db import models, transaction
 from .code_execution import CodeExecutionService
 from .models import User, VerificationCode, LoginHistory, Course, Chapter, Page, UserProgress, ContentPage, \
-    CodingExercise, CourseReview, Payment
+    CodingExercise, CourseReview, Payment, Technology
 from .serializers import UserRegistrationSerializer, UserSerializer, CourseSerializer, ChapterSerializer, \
     PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, \
-    TestResultsSerializer, TestCaseSerializer, ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
-    ContentImageCreateSerializer, ContentVideoCreateSerializer, CourseReviewSerializer, PublicCourseSerializer
+     TestCaseSerializer,ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
+    ContentImageCreateSerializer, ContentVideoCreateSerializer, CourseReviewSerializer, PublicCourseSerializer, \
+    TechnologySerializer
 from django.core.mail import EmailMessage
 import stripe
 from rest_framework import permissions
@@ -31,15 +33,14 @@ from rest_framework import permissions
 
 class IsInstructor(permissions.BasePermission):
     def has_permission(self, request, view):
-        def has_permission(self, request, view):
-            course_id = view.kwargs.get('course_pk')
-            if not course_id:
-                return True
-            try:
-                course = Course.objects.get(id=course_id)
-                return course.instructor == request.user
-            except Course.DoesNotExist:
-                return False
+        course_id = view.kwargs.get('course_pk')
+        if not course_id:
+            return True
+        try:
+            course = Course.objects.get(id=course_id)
+            return course.instructor == request.user
+        except Course.DoesNotExist:
+            return False
 
     def has_object_permission(self, request, view, obj):
         if hasattr(obj, 'course'):
@@ -222,7 +223,7 @@ class AuthViewSet(viewsets.ViewSet):
 
 class CourseViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
-        if self.action == 'create':
+        if self.action in ['create','my_courses','bought_courses']:
             return [IsAuthenticated()]
         elif self.action in ['update', 'partial_update', 'destroy', 'remove_moderator','add_moderator']:
             return [IsAuthenticated(), IsInstructor()]
@@ -230,7 +231,7 @@ class CourseViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsModerator()]
         elif self.action in ['add_review', 'progress']:
             return [IsAuthenticated(), IsStudent()]
-        elif self.action in ['reviews', 'list', 'retrieve']:
+        elif self.action in ['reviews', 'list', 'retrieve','search','filters']:
             return [AllowAny()]
         return [IsAuthenticated()]
 
@@ -255,6 +256,122 @@ class CourseViewSet(viewsets.ModelViewSet):
         course = serializer.save(instructor=self.request.user)
         course.moderators.add(self.request.user)
     queryset = Course.objects.all()
+
+    @action(detail=False, methods=['GET'])
+    def search(self, request):
+        queryset = self.get_queryset()
+
+        title = request.query_params.get('title', '')
+        if title:
+            queryset = queryset.filter(title__icontains=title)
+
+        technologies = request.query_params.getlist('technologies', [])
+        if technologies:
+            queryset = queryset.filter(technologies__name__in=technologies)
+
+        level = request.query_params.get('level')
+        if level:
+            queryset = queryset.filter(level=level)
+
+        min_price = request.query_params.get('min_price')
+        max_price = request.query_params.get('max_price')
+        if min_price:
+            queryset = queryset.filter(price__gte=min_price)
+        if max_price:
+            queryset = queryset.filter(price__lte=max_price)
+
+        instructor = request.query_params.get('instructor')
+        if instructor:
+            queryset = queryset.filter(instructor__username=instructor)
+
+        min_rating = request.query_params.get('min_rating')
+        if min_rating:
+            queryset = queryset.filter(average_rating__gte=min_rating)
+
+        sort_by = request.query_params.get('sort')
+        order = request.query_params.get('order', 'asc')
+        valid_sort_fields = ['price', 'average_rating', 'created_at']
+        if sort_by in valid_sort_fields:
+            if order == 'desc':
+                sort_by = f'-{sort_by}'
+            queryset = queryset.order_by(sort_by)
+
+        page_size = int(request.query_params.get('page_size', 10))
+        page = int(request.query_params.get('page', 1))
+
+        paginator = PageNumberPagination()
+        paginator.page_size = min(page_size, 10)
+
+        page_items = paginator.paginate_queryset(queryset, request)
+
+        if request.user.is_authenticated:
+            purchased_courses = Payment.objects.filter(
+                user=request.user,
+                status='ACCEPTED'
+            ).values_list('course_id', flat=True)
+
+            serializer = CourseSerializer(page_items, many=True, context={
+                'request': request,
+                'purchased_courses': purchased_courses
+            })
+        else:
+            serializer = PublicCourseSerializer(page_items, many=True)
+
+        return paginator.get_paginated_response({
+            'results': serializer.data,
+            'filters': {
+                'levels': dict(Course.LEVEL_CHOICES),
+                'technologies': list(Technology.objects.values('id', 'name')),
+                'price_range': {
+                    'min': Course.objects.aggregate(Min('price'))['price__min'],
+                    'max': Course.objects.aggregate(Max('price'))['price__max']
+                }
+            }
+        })
+
+    @action(detail=False, methods=['GET'])
+    def filters(self, request):
+        return Response({
+            'levels': dict(Course.LEVEL_CHOICES),
+            'technologies': TechnologySerializer(
+                Technology.objects.all(),
+                many=True
+            ).data,
+            'price_range': {
+                'min': Course.objects.aggregate(Min('price'))['price__min'],
+                'max': Course.objects.aggregate(Max('price'))['price__max']
+            },
+            'instructors': UserSerializer(
+                User.objects.filter(courses__isnull=False).distinct(),
+                many=True
+            ).data
+        })
+
+    @action(detail=False, methods=['GET'])
+    def bought_courses(self, request):
+        if not request.user.is_authenticated:
+            return Response({'error': 'Brak dostępu, zaloguj się'}, status=401)
+
+        purchased_courses = Course.objects.filter(
+            payments__user=request.user,
+            payments__status='ACCEPTED'
+        )
+
+        serializer = CourseSerializer(purchased_courses, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['GET'])
+    def my_courses(self, request):
+        if not request.user.is_authenticated:
+            return Response({'error': 'Brak dostępu, zaloguj się'}, status=401)
+
+        my_courses = Course.objects.filter(
+            models.Q(instructor=request.user) |
+            models.Q(moderators=request.user)
+        ).distinct()
+
+        serializer = CourseSerializer(my_courses, many=True)
+        return Response(serializer.data)
     @action(detail=True, methods=['GET'])
     def check_access(self, request, pk=None):
         course = self.get_object()
@@ -321,10 +438,16 @@ class CourseViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
     def get_queryset(self):
-        return Course.objects.annotate(
+        queryset = Course.objects.annotate(
             average_rating=Avg('reviews__rating'),
             total_reviews=Count('reviews')
         ).prefetch_related('reviews', 'chapters', 'technologies')
+
+        user = self.request.user
+        if not user.is_authenticated or (not user.is_staff and not user.is_superuser):
+            queryset = queryset.filter(is_published=True)
+
+        return queryset
     @action(detail=True, methods=['post'])
     def add_chapter(self, request, pk=None):
         course = self.get_object()
@@ -396,14 +519,7 @@ class ChapterViewSet(viewsets.ModelViewSet):
         course_id = self.kwargs.get('course_pk')
         course = Course.objects.get(id=course_id)
 
-        if course.instructor == self.request.user or self.request.user in course.moderators.all():
-            return Chapter.objects.filter(course_id=course_id)
-
-        if Payment.objects.filter(user=self.request.user, course_id=course_id, status='ACCEPTED').exists():
-            return Chapter.objects.filter(course_id=course_id)
-
         return Chapter.objects.filter(course_id=course_id)
-
     def perform_create(self, serializer):
         course_id = self.kwargs.get('course_pk')
         serializer.save(course_id=course_id)
@@ -590,6 +706,8 @@ class PageViewSet(viewsets.ModelViewSet):
             serializer = QuizSerializer(page.quiz, data=request.data)
         elif page.type == 'CODING':
             serializer = CodingExerciseSerializer(page.coding_exercise, data=request.data)
+        else:
+            return Response({'error':'Błędny typ strony.'}, status=400)
 
         if serializer.is_valid():
             serializer.save()
@@ -818,8 +936,6 @@ def activate_view(request):
         return redirect('home')
 def home_view(request):
     return render(request, 'home.html', {'title': 'Strona Główna'})
-def test_view(request):
-    return render(request, 'test.html', {'title': 'test'})
 
 
 def password_reset_request_view(request):

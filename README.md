@@ -7,13 +7,9 @@ Wymagania funkcjonalne:
 - Weryfikacja tożsamości podczas rejestracji poprzez potwierdzenie adresu e-mail lub kodu weryfikacyjnego.  
 - Możliwość edycji danych osobowych, takich jak imię, nazwisko, adres e-mail, zdjęcie profilowe itp.
 - Możliwość przypomnienia hasła przy wykorzystaniu adresu e-mail/numeru telefonu
-- Możliwość zmiany hasła po podaniu kodu z maila/SMSa.
-- Możliwość usunięcia konta po podaniu kodu z maila/SMSa.
-- Możliwość wybrania ilości etapów logowania (max 2).
-- Sprawdzanie poprzednich logowań.
-- Wysyłanie wiadomości email, jeśli wystąpi próba logowania z nowego adresu IP.
-- Propozycja zmiany hasła pop 6 miesiącach od poprzedniej zmiany.
-- Po 5 nieudanych logowaniach wiadomość SMS z kodem, aby dalej kontynuować próby logowania.
+- Możliwość zmiany hasła po podaniu kodu z maila.
+- Możliwość usunięcia konta po podaniu kodu z maila.
+- Propozycja zmiany hasła po 6 miesiącach od poprzedniej zmiany.
 - Panel administracyjny dla użytkowników umożliwiający zarządzanie ich kontem, subskrypcjami, kursami itp.   
 - Panel administracyjny dla administratora strony.
 
@@ -48,17 +44,12 @@ Wymagania funkcjonalne:
 - Dostęp do indywidualnego panelu użytkownika umożliwiającego śledzenie postępów w kursach, w tym ukończonych lekcji, wyników testów, wykonanych zadań itp.
 - Możliwość monitorowania własnych osiągnięć i postępów w czasie rzeczywistym.
 - Funkcja umożliwiająca komunikację z instruktorem kursu poprzez prywatne wiadomości, czat lub forum dyskusyjne.
-- Możliwość udziału w dyskusjach grupowych z innymi uczestnikami kursu w celu wymiany wiedzy, doświadczeń i pomocy wzajemnej.
 - Możliwość oceniania kursów oraz pozostawiania opinii i komentarzy na temat jakości kursu, materiałów edukacyjnych, instruktora itp.
 - Funkcja umożliwiająca uczestnikom dzielenie się swoimi doświadczeniami i opiniami, co może być przydatne dla innych potencjalnych uczestników.
 4. System płatności
 - Integracja metody płatności kartą, PayPay, Google Pay, Apple Pay, BLIK
 - Możliwość płatności za kurs w formie jednorazowej opłaty.
-- Możliwość wykupienia subskrybcji dającej dostęp do określonej ilości kursów.
-- Możliwość wykupienia subskrybcji dającej dostęp do wszystkich kursów.
 - Wiadomość potwierdzająca płatność.
-- Automatyczne przedłużanie subskrypcji i pobieranie opłat w określonych cyklach czasowych, jeśli użytkownik zdecyduje się kontynuować dostęp do kursu.
-- Informowanie drogą mailową, jeśli cena subskrybcji. 
 - Funkcja umożliwiająca tworzenia kodów rabatowych i promocji. 
 - Możliwość określenia terminu obowiązujących rabatów oraz ich monitorowanie. 
 - Historia płatności użytkownika pozwalająca na przeglądanie wszelkich transakcji, ich dat i kwot. 

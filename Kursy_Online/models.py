@@ -48,6 +48,7 @@ class Course(models.Model):
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES)
     technologies = models.ManyToManyField(Technology)
     instructor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='courses')
+    moderators = models.ManyToManyField(User, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_published = models.BooleanField(default=False)

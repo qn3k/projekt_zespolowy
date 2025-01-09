@@ -5,6 +5,10 @@ from .models import Course, LoginHistory, Technology, Course, Chapter, Page, Con
 
 User = get_user_model()
 
+class UserInformationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('username', 'first_name', 'last_name', 'email')
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -207,9 +211,11 @@ class CourseSerializer(serializers.ModelSerializer):
     reviews = CourseReviewSerializer(many=True, read_only=True)
     average_rating = serializers.FloatField(read_only=True)
     total_reviews = serializers.IntegerField(read_only=True)
+    instructor = UserInformationSerializer(read_only=True)
+    moderators = UserInformationSerializer(many=True, read_only=True)
     class Meta:
         model = Course
-        fields = ['id', 'title', 'description', 'cover_image', 'price', 'level', 'technologies', 'instructor', 'created_at', 'updated_at', 'is_published', 'chapters', 'reviews', 'average_rating', 'total_reviews']
+        fields = ['id', 'title', 'description', 'cover_image', 'price', 'level', 'technologies', 'instructor', 'moderators','created_at', 'updated_at', 'is_published', 'chapters', 'reviews', 'average_rating', 'total_reviews']
 
 
     def create(self, validated_data):
@@ -228,9 +234,31 @@ class CourseSerializer(serializers.ModelSerializer):
                 chapter_serializer.save(course=course)
 
         return course
+class PublicCourseSerializer(serializers.ModelSerializer):
+    instructor = UserSerializer()
+    content = serializers.SerializerMethodField()
+    average_rating = serializers.FloatField()
+    total_reviews = serializers.IntegerField()
 
+    class Meta:
+        model = Course
+        fields = [
+            'id', 'title', 'description', 'cover_image',
+            'price', 'level', 'instructor', 'content',
+            'average_rating', 'total_reviews'
+        ]
 
-
+    def get_content(self, obj):
+        chapters = obj.chapters.all()
+        return [{
+            'id': chapter.id,
+            'title': chapter.title,
+            'pages': [{
+                'id': page.id,
+                'title': page.title,
+                'type': page.type
+            } for page in chapter.pages.all()]
+        } for chapter in chapters]
 class ContentImageCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContentImage

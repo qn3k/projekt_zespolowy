@@ -20,14 +20,82 @@ from django.db import models, transaction
 from .code_execution import CodeExecutionService
 from .models import User, VerificationCode, LoginHistory, Course, Chapter, Page, UserProgress, ContentPage, \
     CodingExercise, CourseReview, Payment
-from .serializers import UserRegistrationSerializer, UserSerializer, CourseSerializer, ChapterSerializer,PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, TestResultsSerializer, TestCaseSerializer, ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer,ContentImageCreateSerializer, ContentVideoCreateSerializer, CourseReviewSerializer
+from .serializers import UserRegistrationSerializer, UserSerializer, CourseSerializer, ChapterSerializer, \
+    PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, \
+    TestResultsSerializer, TestCaseSerializer, ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
+    ContentImageCreateSerializer, ContentVideoCreateSerializer, CourseReviewSerializer, PublicCourseSerializer
 from django.core.mail import EmailMessage
 import stripe
+from rest_framework import permissions
+
+
+class IsInstructor(permissions.BasePermission):
+    def has_permission(self, request, view):
+        def has_permission(self, request, view):
+            course_id = view.kwargs.get('course_pk')
+            if not course_id:
+                return True
+            try:
+                course = Course.objects.get(id=course_id)
+                return course.instructor == request.user
+            except Course.DoesNotExist:
+                return False
+
+    def has_object_permission(self, request, view, obj):
+        if hasattr(obj, 'course'):
+            return obj.course.instructor == request.user
+        elif hasattr(obj, 'chapter'):
+            return obj.chapter.course.instructor == request.user
+        return obj.instructor == request.user
+
+
+class IsModerator(permissions.BasePermission):
+    def has_permission(self, request, view):
+        course_id = view.kwargs.get('course_pk')
+        if not course_id:
+            return True
+        try:
+            course = Course.objects.get(id=course_id)
+            return request.user in course.moderators.all()
+        except Course.DoesNotExist:
+            return False
+
+    def has_object_permission(self, request, view, obj):
+        if hasattr(obj, 'course'):
+            return request.user in obj.course.moderators.all()
+        elif hasattr(obj, 'chapter'):
+            return request.user in obj.chapter.course.moderators.all()
+        return request.user in obj.moderators.all()
+
+
+class IsStudent(permissions.BasePermission):
+    def has_permission(self, request, view):
+        course_id = view.kwargs.get('course_pk')
+        if not course_id:
+            return True
+        return Payment.objects.filter(
+            user=request.user,
+            course_id=course_id,
+            status='ACCEPTED'
+        ).exists()
+
+    def has_object_permission(self, request, view, obj):
+        if hasattr(obj, 'course'):
+            course = obj.course
+        elif hasattr(obj, 'chapter'):
+            course = obj.chapter.course
+        else:
+            course = obj
+
+        return Payment.objects.filter(
+            user=request.user,
+            course=course,
+            status='ACCEPTED'
+        ).exists()
+
 class AuthViewSet(viewsets.ViewSet):
     def get_permissions(self):
-        if self.action in ['register', 'login', 'request_password_reset', 'reset_password_confirm']:
-            return [AllowAny()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
     @action(detail=False, methods=['post'])
     def register(self, request):
@@ -152,11 +220,106 @@ class AuthViewSet(viewsets.ViewSet):
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'error': 'Invalid reset link'}, status=status.HTTP_400_BAD_REQUEST)
 
-
 class CourseViewSet(viewsets.ModelViewSet):
-    serializer_class = CourseSerializer
-    permission_classes = [IsAuthenticated]
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsAuthenticated()]
+        elif self.action in ['update', 'partial_update', 'destroy', 'remove_moderator','add_moderator']:
+            return [IsAuthenticated(), IsInstructor()]
+        elif self.action in ['add_chapter']:
+            return [IsAuthenticated(), IsModerator()]
+        elif self.action in ['add_review', 'progress']:
+            return [IsAuthenticated(), IsStudent()]
+        elif self.action in ['reviews', 'list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def get_serializer_class(self):
+        if self.action in ['retrieve', 'list']:
+            if not self.request.user.is_authenticated:
+                return PublicCourseSerializer
+
+            if self.kwargs.get('pk'):
+                course = Course.objects.get(id=self.kwargs.get('pk'))
+                has_access = Payment.objects.filter(
+                    user=self.request.user,
+                    course=course,
+                    status='ACCEPTED'
+                ).exists() or course.instructor == self.request.user
+                return CourseSerializer if has_access else PublicCourseSerializer
+            else:
+                return PublicCourseSerializer
+        return CourseSerializer
+
+    def perform_create(self, serializer):
+        course = serializer.save(instructor=self.request.user)
+        course.moderators.add(self.request.user)
     queryset = Course.objects.all()
+    @action(detail=True, methods=['GET'])
+    def check_access(self, request, pk=None):
+        course = self.get_object()
+        has_access = Payment.objects.filter(
+            user=request.user,
+            course=course,
+            status='ACCEPTED'
+        ).exists()
+
+        return Response({
+            'has_access': has_access
+        })
+
+    @action(detail=True, methods=['POST'])
+    def add_moderator(self, request, pk=None):
+        course = self.get_object()
+        if request.user != course.instructor:
+            return Response(
+                {'error': 'Tylko instruktor może dodawać moderatorów'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        moderator_id = request.data.get('user_id')
+        try:
+            new_moderator = User.objects.get(id=moderator_id)
+            if new_moderator in course.moderators.all():
+                return Response(
+                    {'error': 'Ten użytkownik jest już moderatorem'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            course.moderators.add(new_moderator)
+            return Response(
+                {'message': f'Użytkownik {new_moderator.username} został dodany jako moderator'},
+                status=status.HTTP_200_OK
+            )
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'Nie znaleziono użytkownika'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=True, methods=['POST'])
+    def remove_moderator(self, request, pk=None):
+        course = self.get_object()
+        try:
+            moderator = User.objects.get(id=request.data.get('user_id'))
+            if moderator == course.instructor:
+                return Response(
+                    {'error': 'Nie można usunąć instruktora z moderatorów'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if moderator not in course.moderators.all():
+                return Response(
+                    {'error': 'Ten użytkownik nie jest moderatorem'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            course.moderators.remove(moderator)
+            return Response(
+                {'message': f'Użytkownik {moderator.username} został usunięty z moderatorów'}
+            )
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'Nie znaleziono użytkownika'},
+                status=status.HTTP_404_NOT_FOUND
+            )
     def get_queryset(self):
         return Course.objects.annotate(
             average_rating=Avg('reviews__rating'),
@@ -193,38 +356,52 @@ class CourseViewSet(viewsets.ModelViewSet):
         reviews = CourseReview.objects.filter(course=course)
         serializer = CourseReviewSerializer(reviews, many=True)
         return Response(serializer.data)
-@action(detail=True, methods=['GET'])
-def progress(self, request, pk=None):
-    course = self.get_object()
-    user_progress = UserProgress.objects.filter(
-        user=request.user,
-        page__chapter__course=course
-    ).select_related('page')
-    total_pages = Page.objects.filter(chapter__course=course).count()
-    completed_pages = user_progress.filter(completed=True).count()
-    pages_progress = []
-    for progress in user_progress:
-        pages_progress.append({
-            'page_id': progress.page.id,
-            'title': progress.page.title,
-            'completed': progress.completed,
-            'completed_at': progress.completed_at
-        })
+    @action(detail=True, methods=['GET'])
+    def progress(self, request, pk=None):
+        course = self.get_object()
+        user_progress = UserProgress.objects.filter(
+            user=request.user,
+            page__chapter__course=course
+        ).select_related('page')
+        total_pages = Page.objects.filter(chapter__course=course).count()
+        completed_pages = user_progress.filter(completed=True).count()
+        pages_progress = []
+        for progress in user_progress:
+            pages_progress.append({
+                'page_id': progress.page.id,
+                'title': progress.page.title,
+                'completed': progress.completed,
+                'completed_at': progress.completed_at
+            })
 
-    return Response({
-        'course_id': course.id,
-        'total_pages': total_pages,
-        'completed_pages': completed_pages,
-        'progress_percentage': (completed_pages / total_pages * 100) if total_pages > 0 else 0,
-        'pages_progress': pages_progress
-    })
+        return Response({
+            'course_id': course.id,
+            'total_pages': total_pages,
+            'completed_pages': completed_pages,
+            'progress_percentage': (completed_pages / total_pages * 100) if total_pages > 0 else 0,
+            'pages_progress': pages_progress
+        })
 class ChapterViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()
     serializer_class = ChapterSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action == 'list' or self.action == 'retrieve':
+            return [AllowAny()]
+        elif self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), IsModerator()]
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         course_id = self.kwargs.get('course_pk')
+        course = Course.objects.get(id=course_id)
+
+        if course.instructor == self.request.user or self.request.user in course.moderators.all():
+            return Chapter.objects.filter(course_id=course_id)
+
+        if Payment.objects.filter(user=self.request.user, course_id=course_id, status='ACCEPTED').exists():
+            return Chapter.objects.filter(course_id=course_id)
+
         return Chapter.objects.filter(course_id=course_id)
 
     def perform_create(self, serializer):
@@ -232,11 +409,35 @@ class ChapterViewSet(viewsets.ModelViewSet):
         serializer.save(course_id=course_id)
 class PageViewSet(viewsets.ModelViewSet):
     serializer_class = PageSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        elif self.action in ['create', 'update', 'partial_update', 'destroy',
+                             'add_quiz_question', 'add_content_image',
+                             'add_content_video', 'add_test_case', 'update_content',
+                             'update_order']:
+            return [IsAuthenticated(), IsModerator()]
+        elif self.action == 'submit_solution':
+            return [IsAuthenticated(), IsStudent()]
+        return [IsAuthenticated()]
 
     def get_queryset(self):
-        return Page.objects.filter(chapter_id=self.kwargs.get('chapter_pk'))
+        chapter_id = self.kwargs.get('chapter_pk')
+        course_id = self.kwargs.get('course_pk')
+        try:
+            chapter = Chapter.objects.get(id=chapter_id)
+            course = chapter.course
 
+            if course.instructor == self.request.user or self.request.user in course.moderators.all():
+                return Page.objects.filter(chapter_id=chapter_id)
+
+            if Payment.objects.filter(user=self.request.user, course_id=course_id, status='ACCEPTED').exists():
+                return Page.objects.filter(chapter_id=chapter_id)
+
+            return Page.objects.filter(chapter_id=chapter_id).only('id', 'title', 'type', 'order')
+        except Chapter.DoesNotExist:
+            return Page.objects.none()
     def perform_create(self, serializer):
         chapter = Chapter.objects.get(id=self.kwargs.get('chapter_pk'))
         max_order = Page.objects.filter(chapter=chapter).aggregate(Max('order'))['order__max']
@@ -398,7 +599,8 @@ class PageViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def submit_solution(self, request, course_pk=None, chapter_pk=None, pk=None):
         page = self.get_object()
-
+        chapter = page.chapter
+        course = chapter.course
         if page.type != 'CODING':
             return Response(
                 {'error': 'Ta strona nie jest zadaniem programistycznym'},
@@ -448,8 +650,7 @@ class PageViewSet(viewsets.ModelViewSet):
                 }
             )
 
-        results_serializer = TestResultsSerializer(results)
-        return Response(results_serializer.data)
+        return Response(results)
 
 
 @api_view(['GET'])
@@ -477,7 +678,10 @@ def verify_email(request):
 
 
 class PaymentViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
+    def get_permissions(self):
+        if self.action == 'create_payment':
+            return [IsAuthenticated()]
+        return [AllowAny()]
 
     @action(detail=False, methods=['POST'], url_path='create/(?P<course_id>[^/.]+)')
     def create_payment(self, request, course_id=None):

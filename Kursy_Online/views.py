@@ -149,7 +149,7 @@ class AuthViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def logout(self, request):
         logout(request)
-        return Response({'message': 'Logged out successfully'})
+        return redirect('home')
 
     @action(detail=False, methods=['get', 'put', 'patch'], permission_classes=[IsAuthenticated])
     def profile(self, request):
@@ -858,7 +858,7 @@ def login_view(request):
 
         if user is not None:
             login(request, user)
-            return redirect('login')
+            return redirect('home')
         else:
             print(f"Failed login attempt: username={username}, password={password}")
             messages.error(request, 'Invalid username or password')

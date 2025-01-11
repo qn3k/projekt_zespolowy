@@ -155,3 +155,6 @@ EMAIL_HOST_PASSWORD = 'uevr xheg aiua bmmt'
 STRIPE_WH = 'stripewh'
 STRIPE_PK = 'x'
 STRIPE_SK = 'x'
+
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [BASE_DIR / "static"]

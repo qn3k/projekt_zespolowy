@@ -1,5 +1,6 @@
 from django.contrib.auth import login, logout, authenticate
 from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
@@ -10,9 +11,10 @@ from django.utils.crypto import get_random_string
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils import timezone
+from rest_framework import permissions
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
@@ -28,7 +30,6 @@ from .serializers import UserRegistrationSerializer, UserSerializer, CourseSeria
     TechnologySerializer
 from django.core.mail import EmailMessage
 import stripe
-from rest_framework import permissions
 
 
 class IsInstructor(permissions.BasePermission):
@@ -222,6 +223,10 @@ class AuthViewSet(viewsets.ViewSet):
         return Response({'error': 'Invalid reset link'}, status=status.HTTP_400_BAD_REQUEST)
 
 class CourseViewSet(viewsets.ModelViewSet):
+    queryset = Course.objects.all()
+    serializer_class = CourseSerializer
+    permission_classes = [IsAuthenticated]
+
     def get_permissions(self):
         if self.action in ['create','my_courses','bought_courses']:
             return [IsAuthenticated()]
@@ -252,11 +257,33 @@ class CourseViewSet(viewsets.ModelViewSet):
                 return PublicCourseSerializer
         return CourseSerializer
 
+    
     def perform_create(self, serializer):
         course = serializer.save(instructor=self.request.user)
+        
+        moderators = self.request.data.getlist('moderators', [])
+        for moderator_id in moderators:
+            course.moderators.add(moderator_id)
+        
         course.moderators.add(self.request.user)
-    queryset = Course.objects.all()
+        
+        technologies = self.request.data.getlist('technologies', [])
+        for tech_id in technologies:
+            course.technologies.add(tech_id)
 
+        return course
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            course = self.perform_create(serializer)
+            return Response(
+                {'message': 'Kurs został utworzony pomyślnie.', 
+                    'course': CourseSerializer(course).data},
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
     @action(detail=False, methods=['GET'])
     def search(self, request):
         queryset = self.get_queryset()
@@ -438,16 +465,24 @@ class CourseViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
     def get_queryset(self):
+        print("Wywołanie get_queryset")  
         queryset = Course.objects.annotate(
             average_rating=Avg('reviews__rating'),
             total_reviews=Count('reviews')
-        ).prefetch_related('reviews', 'chapters', 'technologies')
+        ).prefetch_related('reviews', 'technologies')
 
-        user = self.request.user
-        if not user.is_authenticated or (not user.is_staff and not user.is_superuser):
-            queryset = queryset.filter(is_published=True)
+        sort_by = self.request.query_params.get('sort', 'title')
+        print(f"Sortowanie po: {sort_by}")  
+
+        if sort_by == 'date':
+            queryset = queryset.order_by('-created_at')
+        elif sort_by == 'rating':
+            queryset = queryset.order_by('-average_rating')
+        else:
+            queryset = queryset.order_by('title')
 
         return queryset
+
     @action(detail=True, methods=['post'])
     def add_chapter(self, request, pk=None):
         course = self.get_object()
@@ -885,7 +920,7 @@ def register_view(request):
             return render(request, 'register.html')
 
         user = User.objects.create_user(username=username, email=email, password=password)
-        user.is_active = False # Konto nieaktywne
+        user.is_active = False 
         user.save()
 
         # WysyĹ‚anie e-maila aktywacyjnego
@@ -935,7 +970,28 @@ def activate_view(request):
         messages.error(request, 'Link wygasł lub jest niepoprawny')
         return redirect('home')
 def home_view(request):
-    return render(request, 'home.html', {'title': 'Strona Główna'})
+    courses = Course.objects.annotate(
+        average_rating=Avg('reviews__rating'),
+        total_reviews=Count('reviews')
+    ).prefetch_related('reviews', 'chapters', 'technologies')
+    
+    if not request.user.is_authenticated:
+        courses = courses.filter(is_published=True)
+
+    sort_by = request.GET.get('sort', 'title')  
+    if sort_by == 'date':
+        courses = courses.order_by('-created_at')
+    elif sort_by == 'rating':
+        courses = courses.order_by('-average_rating')
+    else:
+        courses = courses.order_by('title')
+
+    context = {
+        'title': 'Strona Główna',
+        'courses': courses,
+    }
+    
+    return render(request, 'home.html', context)
 
 
 def password_reset_request_view(request):
@@ -1012,3 +1068,30 @@ def password_reset_confirm_view(request, uidb64, token):
         return redirect('home')
 
     return render(request, 'password_reset_confirm.html', {'uidb64': uidb64, 'token': token})
+
+@login_required
+def create_course_view(request):
+    technologies = Technology.objects.all()
+    available_moderators = User.objects.exclude(id=request.user.id)
+    
+    return render(request, 'create_course.html', {
+        'technologies': technologies,
+        'available_moderators': available_moderators
+    })
+
+class TechnologyViewSet(viewsets.ModelViewSet):
+    queryset = Technology.objects.all().order_by('name')
+    serializer_class = TechnologySerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            self.perform_create(serializer)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@login_required
+@user_passes_test(lambda u: u.is_staff)
+def technology_management_view(request):
+    return render(request, 'technology_management.html')    

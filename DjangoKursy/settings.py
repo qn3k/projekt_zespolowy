@@ -157,4 +157,4 @@ STRIPE_PK = 'x'
 STRIPE_SK = 'x'
 
 STATIC_URL = '/static/'
-STATICFILES_DIRS = [BASE_DIR / "static"]
+STATICFILES_DIRS = [BASE_DIR / "Kursy_Online/static"]

@@ -274,12 +274,36 @@ class CourseViewSet(viewsets.ModelViewSet):
         return course
     
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        data = request.data.copy()
+        
+        technologies = request.data.getlist('technologies', [])
+        moderators = request.data.getlist('moderators', [])
+        
+        is_published = request.data.get('is_published', '') == 'on'
+        data['is_published'] = is_published
+        
+        serializer = self.get_serializer(data=data)
         if serializer.is_valid():
-            course = self.perform_create(serializer)
+            course = serializer.save(instructor=request.user)
+            
+            for tech_id in technologies:
+                try:
+                    tech = Technology.objects.get(id=tech_id)
+                    course.technologies.add(tech)
+                except Technology.DoesNotExist:
+                    pass
+                    
+            for mod_id in moderators:
+                try:
+                    moderator = User.objects.get(id=mod_id)
+                    course.moderators.add(moderator)
+                except User.DoesNotExist:
+                    pass
+                    
+            course.moderators.add(request.user)
+            
             return Response(
-                {'message': 'Kurs został utworzony pomyślnie.', 
-                    'course': CourseSerializer(course).data},
+                CourseSerializer(course).data,
                 status=status.HTTP_201_CREATED
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -1070,19 +1094,21 @@ def password_reset_confirm_view(request, uidb64, token):
     return render(request, 'password_reset_confirm.html', {'uidb64': uidb64, 'token': token})
 
 @login_required
-def create_course_view(request):
-    technologies = Technology.objects.all()
-    available_moderators = User.objects.exclude(id=request.user.id)
+def create_course(request):
+    if not request.user.is_authenticated:
+        return redirect('login')
+        
+    context = {
+        'technologies': Technology.objects.all(),
+        'available_moderators': User.objects.exclude(id=request.user.id)
+    }
     
-    return render(request, 'create_course.html', {
-        'technologies': technologies,
-        'available_moderators': available_moderators
-    })
+    return render(request, 'create_course.html', context)
 
 class TechnologyViewSet(viewsets.ModelViewSet):
     queryset = Technology.objects.all().order_by('name')
     serializer_class = TechnologySerializer
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -1095,3 +1121,4 @@ class TechnologyViewSet(viewsets.ModelViewSet):
 @user_passes_test(lambda u: u.is_staff)
 def technology_management_view(request):
     return render(request, 'technology_management.html')    
+

@@ -234,6 +234,7 @@ class CourseSerializer(serializers.ModelSerializer):
                 chapter_serializer.save(course=course)
 
         return course
+        
 class PublicCourseSerializer(serializers.ModelSerializer):
     instructor = UserSerializer()
     content = serializers.SerializerMethodField()

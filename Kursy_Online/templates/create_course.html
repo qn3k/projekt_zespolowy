@@ -7,13 +7,17 @@
     <title>Tworzenie kursu</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="{% static 'styles.css' %}">
+    <!-- React dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 </head>
 <body>
     <header>
         <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
             <div class="container-fluid">
-                <a class="navbar-brand" href="#"><img src="{% static 'logo.png' %}" alt="Logo" class="logo"></a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <a class="navbar-brand" href="#"><img src="" alt="Logo" class="logo"></a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="collapse navbar-collapse" id="navbarNav">
@@ -22,7 +26,7 @@
                             <a class="nav-link" href="{% url 'home' %}">Strona Główna</a>
                         </li>
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Kursy</a>
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">Kursy</a>
                             <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
                                 <li><a class="dropdown-item" href="">Matematyka</a></li>
                                 <li><a class="dropdown-item" href="">Nauka</a></li>
@@ -53,155 +57,273 @@
         </nav>
     </header>
 
-    <main class="container my-5">
-        <div class="row justify-content-center">
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-header">
-                        <h2 class="text-center mb-0">Tworzenie nowego kursu</h2>
-                    </div>
-                    <div class="card-body">
-                        {% if messages %}
-                            {% for message in messages %}
-                                <div class="alert alert-{{ message.tags }}" role="alert">
-                                    {{ message }}
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const CreateCourse = () => {
+            const [formData, setFormData] = React.useState({
+                title: '',
+                description: '',
+                price: 0,
+                level: 'BEGINNER',
+                technologies: [],
+                coverImage: null,
+                isPublished: false
+            });
+
+            const [message, setMessage] = React.useState({ type: '', text: '' });
+            const [loading, setLoading] = React.useState(false);
+            const [technologiesList, setTechnologiesList] = React.useState([]);
+            const [isLoading, setIsLoading] = React.useState(true);
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+            React.useEffect(() => {
+                const fetchTechnologies = async () => {
+                    try {
+                        setIsLoading(true);
+                        const response = await fetch('/api/technologies/');
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch technologies');
+                        }
+                        const data = await response.json();
+                        if (Array.isArray(data)) {
+                            setTechnologiesList(data);
+                        } else {
+                            console.error('Received non-array data:', data);
+                            setTechnologiesList([]);
+                        }
+                    } catch (error) {
+                        console.error('Error fetching technologies:', error);
+                        setMessage({ type: 'error', text: 'Nie udało się załadować technologii' });
+                        setTechnologiesList([]);
+                    } finally {
+                        setIsLoading(false);
+                    }
+                };
+
+                fetchTechnologies();
+            }, []);
+
+            const handleInputChange = (e) => {
+                const { name, value, type, checked } = e.target;
+                setFormData(prev => ({
+                    ...prev,
+                    [name]: type === 'checkbox' ? checked : value
+                }));
+            };
+
+            const handleImageChange = (e) => {
+                const file = e.target.files[0];
+                setFormData(prev => ({
+                    ...prev,
+                    coverImage: file
+                }));
+            };
+
+            const handleTechnologiesChange = (e) => {
+                const options = e.target.options;
+                const selected = [];
+                for (let i = 0; i < options.length; i++) {
+                    if (options[i].selected) {
+                        selected.push(options[i].value);
+                    }
+                }
+                setFormData(prev => ({
+                    ...prev,
+                    technologies: selected
+                }));
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+
+                try {
+                    const formDataToSend = new FormData();
+                    Object.keys(formData).forEach(key => {
+                        if (key === 'technologies') {
+                            formData[key].forEach(tech => {
+                                formDataToSend.append('technologies', tech);
+                            });
+                        } else if (key === 'coverImage' && formData[key]) {
+                            formDataToSend.append('cover_image', formData[key]);
+                        } else {
+                            formDataToSend.append(key, formData[key]);
+                        }
+                    });
+
+                    const response = await fetch('/api/courses/', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: formDataToSend,
+                        credentials: 'include'
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Failed to create course');
+                    }
+
+                    setMessage({ type: 'success', text: 'Kurs został utworzony pomyślnie!' });
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                } catch (error) {
+                    setMessage({ type: 'error', text: error.message });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="container my-5">
+                    <div className="row justify-content-center">
+                        <div className="col-md-8">
+                            <div className="card">
+                                <div className="card-header">
+                                    <h2 className="text-center mb-0">Tworzenie nowego kursu</h2>
                                 </div>
-                            {% endfor %}
-                        {% endif %}
-                        
-                        <form method="post" class="needs-validation" novalidate enctype="multipart/form-data">
-                            {% csrf_token %}
-                            
-                            <div class="mb-3">
-                                <label for="title" class="form-label">Tytuł kursu:</label>
-                                <input type="text" class="form-control" id="title" name="title" maxlength="255" required>
-                                <div class="invalid-feedback">
-                                    Proszę podać tytuł kursu (max 255 znaków).
+                                <div className="card-body">
+                                    {message.text && (
+                                        <div className={`alert ${message.type === 'error' ? 'alert-danger' : 'alert-success'}`}>
+                                            {message.text}
+                                        </div>
+                                    )}
+
+                                    <form onSubmit={handleSubmit} className="needs-validation">
+                                        <div className="mb-3">
+                                            <label className="form-label">Tytuł kursu:</label>
+                                            <input
+                                                type="text"
+                                                name="title"
+                                                value={formData.title}
+                                                onChange={handleInputChange}
+                                                className="form-control"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label">Opis kursu:</label>
+                                            <textarea
+                                                name="description"
+                                                value={formData.description}
+                                                onChange={handleInputChange}
+                                                className="form-control"
+                                                rows="4"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label">Cena (PLN):</label>
+                                            <input
+                                                type="number"
+                                                name="price"
+                                                value={formData.price}
+                                                onChange={handleInputChange}
+                                                className="form-control"
+                                                min="0"
+                                                step="0.01"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label">Poziom zaawansowania:</label>
+                                            <select
+                                                name="level"
+                                                value={formData.level}
+                                                onChange={handleInputChange}
+                                                className="form-select"
+                                                required
+                                            >
+                                                <option value="BEGINNER">Beginner</option>
+                                                <option value="INTERMEDIATE">Intermediate</option>
+                                                <option value="ADVANCED">Advanced</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label">Technologie:</label>
+                                            <select
+                                                multiple
+                                                name="technologies"
+                                                value={formData.technologies}
+                                                onChange={handleTechnologiesChange}
+                                                className="form-select"
+                                                required
+                                            >
+                                                {isLoading ? (
+                                                    <option>Ładowanie technologii...</option>
+                                                ) : technologiesList && technologiesList.length > 0 ? (
+                                                    technologiesList.map(tech => (
+                                                        <option key={tech.id} value={tech.id}>
+                                                            {tech.name}
+                                                        </option>
+                                                    ))
+                                                ) : (
+                                                    <option>Brak dostępnych technologii</option>
+                                                )}
+                                            </select>
+                                            <small className="form-text text-muted">
+                                                Przytrzymaj Ctrl (Cmd na Mac) aby wybrać więcej opcji.
+                                            </small>
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label">Okładka kursu:</label>
+                                            <input
+                                                type="file"
+                                                name="coverImage"
+                                                onChange={handleImageChange}
+                                                className="form-control"
+                                                accept="image/*"
+                                            />
+                                            <small className="form-text text-muted">
+                                                Opcjonalne. Zalecany rozmiar: 1200x600px.
+                                            </small>
+                                        </div>
+
+                                        <div className="mb-3 form-check">
+                                            <input
+                                                type="checkbox"
+                                                name="isPublished"
+                                                checked={formData.isPublished}
+                                                onChange={handleInputChange}
+                                                className="form-check-input"
+                                            />
+                                            <label className="form-check-label">
+                                                Opublikuj kurs
+                                            </label>
+                                        </div>
+
+                                        <div className="d-grid gap-2">
+                                            <button
+                                                type="submit"
+                                                className="btn btn-primary"
+                                                disabled={loading}
+                                            >
+                                                {loading ? 'Tworzenie...' : 'Utwórz kurs'}
+                                            </button>
+                                            <a href="{% url 'home' %}" className="btn btn-secondary">
+                                                Anuluj
+                                            </a>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
-
-                            <div class="mb-3">
-                                <label for="description" class="form-label">Opis kursu:</label>
-                                <textarea class="form-control" id="description" name="description" rows="4" required></textarea>
-                                <div class="invalid-feedback">
-                                    Proszę podać opis kursu.
-                                </div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="price" class="form-label">Cena (PLN):</label>
-                                <input type="number" class="form-control" id="price" name="price" step="0.01" min="0" max="9999999.99" required>
-                                <div class="invalid-feedback">
-                                    Proszę podać prawidłową cenę (max 9999999.99).
-                                </div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="level" class="form-label">Poziom zaawansowania:</label>
-                                <select class="form-select" id="level" name="level" required>
-                                    <option value="">Wybierz poziom...</option>
-                                    <option value="BEGINNER">Beginner</option>
-                                    <option value="INTERMEDIATE">Intermediate</option>
-                                    <option value="ADVANCED">Advanced</option>
-                                </select>
-                                <div class="invalid-feedback">
-                                    Proszę wybrać poziom zaawansowania.
-                                </div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="technologies" class="form-label">Technologie:</label>
-                                <select class="form-select" id="technologies" name="technologies" multiple required>
-                                    {% for tech in technologies %}
-                                        <option value="{{ tech.id }}">{{ tech.name }}</option>
-                                    {% endfor %}
-                                </select>
-                                <div class="invalid-feedback">
-                                    Proszę wybrać przynajmniej jedną technologię.
-                                </div>
-                                <small class="form-text text-muted">Przytrzymaj Ctrl (Cmd na Mac) aby wybrać więcej opcji.</small>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="moderators" class="form-label">Moderatorzy (opcjonalnie):</label>
-                                <select class="form-select" id="moderators" name="moderators" multiple>
-                                    {% for user in available_moderators %}
-                                        <option value="{{ user.id }}">{{ user.username }}</option>
-                                    {% endfor %}
-                                </select>
-                                <small class="form-text text-muted">Przytrzymaj Ctrl (Cmd na Mac) aby wybrać więcej opcji.</small>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="cover_image" class="form-label">Okładka kursu:</label>
-                                <input type="file" class="form-control" id="cover_image" name="cover_image" accept="image/*">
-                                <small class="form-text text-muted">Opcjonalne. Zalecany rozmiar: 1200x600px.</small>
-                            </div>
-
-                            <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="is_published" name="is_published">
-                                <label class="form-check-label" for="is_published">Opublikuj kurs</label>
-                            </div>
-                            
-                            <div class="d-grid gap-2">
-                                <button type="submit" class="btn btn-primary">Utwórz kurs</button>
-                                <a href="{% url 'home' %}" class="btn btn-secondary">Anuluj</a>
-                            </div>
-                        </form>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </div>
-    </main>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CreateCourse />);
+    </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        async function createCourse(formData) {
-            try {
-                const response = await fetch('/api/courses/', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-                    },
-                    body: formData
-                });
-        
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || 'Wystąpił błąd podczas tworzenia kursu');
-                }
-        
-                const result = await response.json();
-                window.location.href = '/';  
-            } catch (error) {
-                console.error('Error:', error);
-                showAlert(error.message, 'danger');
-            }
-        }
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.querySelector('form');
-            form.addEventListener('submit', async function(e) {
-                e.preventDefault();
-                if (this.checkValidity()) {
-                    const formData = new FormData(this);
-                    await createCourse(formData);
-                }
-                this.classList.add('was-validated');
-            });
-        });
-        
-        function showAlert(message, type = 'success') {
-            const alertsDiv = document.querySelector('.alerts');
-            const alert = document.createElement('div');
-            alert.className = `alert alert-${type} alert-dismissible fade show`;
-            alert.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            alertsDiv.appendChild(alert);
-            setTimeout(() => alert.remove(), 5000);
-        }
-        </script>
 </body>
 </html>

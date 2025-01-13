@@ -21,6 +21,7 @@ from rest_framework.pagination import PageNumberPagination
 from django.db.models import Max,Min, Avg, Count
 from django.db import models, transaction
 from .code_execution import CodeExecutionService
+from .utils import distribute_balance
 from .models import User, VerificationCode, LoginHistory, Course, Chapter, Page, UserProgress, ContentPage, \
     CodingExercise, CourseReview, Payment, Technology
 from .serializers import UserRegistrationSerializer, UserSerializer, CourseSerializer, ChapterSerializer, \
@@ -860,6 +861,20 @@ class PaymentViewSet(viewsets.ViewSet):
             return [IsAuthenticated()]
         return [AllowAny()]
 
+    def list(self, request):
+        """
+        Zwraca listę wszystkich płatności (opcjonalnie filtrowaną po użytkowniku).
+        """
+        payments = Payment.objects.all()
+
+        # Opcjonalne filtrowanie dla zalogowanego użytkownika
+        if request.user.is_authenticated:
+            payments = payments.filter(user=request.user)
+
+        # Serializacja danych
+        data = [{"id": payment.id, "status": payment.status, "amount": payment.price} for payment in payments]
+        return Response(data)
+
     @action(detail=False, methods=['POST'], url_path='create/(?P<course_id>[^/.]+)')
     def create_payment(self, request, course_id=None):
         stripe.api_key = settings.STRIPE_SK
@@ -899,13 +914,24 @@ class PaymentViewSet(viewsets.ViewSet):
         stripe_payment_id = kwargs.get('payment_intent_id')
         try:
             payment = Payment.objects.get(stripe_payment_id=stripe_payment_id)
+
+            # Zmień status płatności na zaakceptowany
             payment.status = 'ACCEPTED'
             payment.save()
 
-            return Response({'message': 'Płatność została potwierdzona'})
+            # Rozdzielenie balansu pomiędzy instruktorem a administratorem
+            result = distribute_balance(payment.course, payment.price)
+
+            return Response({
+                'message': 'Płatność została potwierdzona',
+                'instructor_balance': result['instructor_balance'],
+                'admin_balance': result['admin_balance']
+            })
 
         except Payment.DoesNotExist:
-            return Response({'error': 'Problem z platnoscia.'}, status=404)
+            return Response({'error': 'Płatność nie została znaleziona'}, status=404)
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
 
 def login_view(request):
     if request.method == 'POST':

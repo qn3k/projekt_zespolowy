@@ -48,6 +48,7 @@ urlpatterns = [
     path('api/verify-email/', verify_email, name='verify_email'),
     path('api/', include(courses_router.urls)),
     path('api/', include(chapters_router.urls)),
+    path('api/', include(router.urls)),
     path('login/', login_view, name='login'),
     path('logout/', AuthViewSet.as_view({'post': 'logout'}), name='auth-logout'),
     path('', home_view, name='home'),

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from .models import Course, LoginHistory, Technology, Course, Chapter, Page, ContentPage, ContentImage, ContentVideo, Quiz, QuizQuestion, QuizAnswer, CodingExercise, TestCase, CourseReview
+from .models import Course, LoginHistory, Technology, Course, Chapter, Page, ContentPage, ContentImage, ContentVideo, Quiz, QuizQuestion, QuizAnswer, Payment, CodingExercise, TestCase, CourseReview
 
 User = get_user_model()
 
@@ -13,8 +13,13 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'first_name', 'last_name',
-                 'phone_number', 'email_verified', 'two_factor_enabled')
-        read_only_fields = ('id', 'email_verified')
+                 'phone_number', 'email_verified', 'two_factor_enabled', 'balance')
+        read_only_fields = ('id', 'email_verified', 'balance')
+
+class PaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = ['id', 'user', 'course', 'price', 'status', 'date']
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password2 = serializers.CharField(write_only=True, required=True)

@@ -1,6 +1,6 @@
 from django.db import models
 
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, UserManager
 from django.utils import timezone
 # Rozszerzenie modelu użytkownika
 class User(AbstractUser):
@@ -10,6 +10,10 @@ class User(AbstractUser):
     two_factor_enabled = models.BooleanField(default=False)
     failed_login_attempts = models.IntegerField(default=0)
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
+    balance = models.FloatField(default=0.00)
+
+    objects = UserManager()
+
 #Historia logowania
 class LoginHistory(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='login_history')

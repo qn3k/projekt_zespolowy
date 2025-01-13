@@ -17,14 +17,15 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Max,Min, Avg, Count
 from django.db import models, transaction
 from .code_execution import CodeExecutionService
 from .utils import distribute_balance
-from .models import User, VerificationCode, LoginHistory, Course, Chapter, Page, UserProgress, ContentPage, \
+from .models import User, VerificationCode, LoginHistory, PayoutHistory, Course, Chapter, Page, UserProgress, ContentPage, \
     CodingExercise, CourseReview, Payment, Technology
-from .serializers import UserRegistrationSerializer, UserSerializer, CourseSerializer, ChapterSerializer, \
+from .serializers import UserRegistrationSerializer, PayoutHistorySerializer, UserSerializer, CourseSerializer, ChapterSerializer, \
     PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, \
      TestCaseSerializer,ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
     ContentImageCreateSerializer, ContentVideoCreateSerializer, CourseReviewSerializer, PublicCourseSerializer, \
@@ -932,6 +933,16 @@ class PaymentViewSet(viewsets.ViewSet):
             return Response({'error': 'Płatność nie została znaleziona'}, status=404)
         except Exception as e:
             return Response({'error': str(e)}, status=400)
+class PayoutHistoryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """
+        Zwraca historię wypłat zalogowanego użytkownika.
+        """
+        payouts = PayoutHistory.objects.filter(user=request.user).order_by('-created_at')
+        serializer = PayoutHistorySerializer(payouts, many=True)
+        return Response(serializer.data)
 
 def login_view(request):
     if request.method == 'POST':

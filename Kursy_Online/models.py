@@ -21,6 +21,16 @@ class LoginHistory(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
     successful = models.BooleanField(default=True)
     device_info = models.TextField()
+
+class PayoutHistory(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="payouts")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(default=timezone.now)
+    description = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"Wypłata {self.amount} dla {self.user.username} w dniu {self.created_at}"
+
 #Model dla kodu weryfikacyjnego
 class VerificationCode(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

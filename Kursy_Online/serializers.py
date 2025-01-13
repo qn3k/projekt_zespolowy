@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from .models import Course, LoginHistory, Technology, Course, Chapter, Page, ContentPage, ContentImage, ContentVideo, Quiz, QuizQuestion, QuizAnswer, Payment, CodingExercise, TestCase, CourseReview
+from .models import Course, LoginHistory, Technology, Course, Chapter, Page, PayoutHistory, ContentPage, ContentImage, ContentVideo, Quiz, QuizQuestion, QuizAnswer, Payment, CodingExercise, TestCase, CourseReview
 
 User = get_user_model()
 
@@ -109,6 +109,11 @@ class QuizQuestionSerializer(serializers.ModelSerializer):
             QuizAnswer.objects.create(question=question, **answer_data)
 
         return question
+
+class PayoutHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PayoutHistory
+        fields = ['id', 'amount', 'created_at', 'description']
 
 class QuizSerializer(serializers.ModelSerializer):
     questions = QuizQuestionSerializer(many=True, required=False)

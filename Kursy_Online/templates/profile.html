@@ -1,0 +1,482 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profil użytkownika</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'styles.css' %}">
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#"><img src="{% static 'logo.png' %}" alt="Logo" class="logo"></a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'home' %}">Strona Główna</a>
+                        </li>
+                        {% if user.is_authenticated %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Profil</a>
+                                <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                                    <li><a class="dropdown-item" href="">Moje kursy</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'profile' %}">Mój profil</a></li>
+                                    <li>                                
+                                        <form method="post" action="{% url 'auth-logout' %}" class="d-inline" id="logout-form">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item" style="background: none;">Wyloguj</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                                <li class="nav-item">
+                                    <span class="nav-link">Witaj, {{ user.username }}!</span>
+                                </li>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'login' %}">Logowanie</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'register' %}">Rejestracja</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container my-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="text-center mb-0">Profil użytkownika</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="alerts"></div>
+
+                        <div class="row mb-4">
+                            <div class="col-md-4 text-center">
+                                <div class="profile-image-container mb-3">
+                                    <img id="profileImage" src="" alt="Zdjęcie profilowe" class="rounded-circle img-thumbnail">
+                                </div>
+                                <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('profilePicture').click()">
+                                    Zmień zdjęcie
+                                </button>
+                                <input type="file" id="profilePicture" accept="image/*" style="display: none" onchange="handleProfilePictureChange(this)">
+                            </div>
+                            <div class="col-md-8">
+                                <div class="mb-4">
+                                    <div class="d-flex justify-content-between align-items-center border-bottom pb-3">
+                                        <div>
+                                            <span class="text-muted">Stan konta:</span>
+                                            <span class="h5 ms-2 mb-0" id="userBalance">0.00 PLN</span>
+                                        </div>
+                                        <button class="btn btn-success btn-sm" onclick="openTopUpModal()">
+                                            Doładuj konto
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="mb-4">
+                                    <h5 class="border-bottom pb-2">Dane użytkownika</h5>
+                                    <dl class="row">
+                                        <dt class="col-sm-4">Login:</dt>
+                                        <dd class="col-sm-8" id="displayUsername"></dd>
+
+                                        <dt class="col-sm-4">Email:</dt>
+                                        <dd class="col-sm-8" id="displayEmail"></dd>
+
+                                        <dt class="col-sm-4">Imię:</dt>
+                                        <dd class="col-sm-8" id="displayFirstName"></dd>
+
+                                        <dt class="col-sm-4">Nazwisko:</dt>
+                                        <dd class="col-sm-8" id="displayLastName"></dd>
+
+                                        <dt class="col-sm-4">Telefon:</dt>
+                                        <dd class="col-sm-8" id="displayPhone">-</dd>
+                                    </dl>
+                                </div>
+
+                                <div class="mb-3 d-flex justify-content-end">
+                                    <button type="button" class="btn btn-primary" onclick="toggleEditForm()">
+                                        Edytuj dane
+                                    </button>
+                                </div>
+
+                                <form id="profileForm" class="needs-validation d-none" novalidate>
+                                    <div class="mb-3">
+                                        <label for="username" class="form-label">Nazwa użytkownika:</label>
+                                        <input type="text" class="form-control" id="username" readonly>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="email" class="form-label">Email:</label>
+                                        <input type="email" class="form-control" id="email" required>
+                                        <div class="invalid-feedback">
+                                            Proszę podać prawidłowy adres email.
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="first_name" class="form-label">Imię:</label>
+                                        <input type="text" class="form-control" id="first_name" required>
+                                        <div class="invalid-feedback">
+                                            Proszę podać imię.
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="last_name" class="form-label">Nazwisko:</label>
+                                        <input type="text" class="form-control" id="last_name" required>
+                                        <div class="invalid-feedback">
+                                            Proszę podać nazwisko.
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="phone_number" class="form-label">Numer telefonu:</label>
+                                        <input type="tel" class="form-control" id="phone_number">
+                                    </div>
+
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-primary">Zapisz zmiany</button>
+                                        <button type="button" class="btn btn-secondary" onclick="openChangePasswordModal()">
+                                            Zmień hasło
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal zmiany hasła -->
+    <div class="modal fade" id="changePasswordModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Zmiana hasła</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="passwordForm" class="needs-validation" novalidate>
+                        <div class="mb-3">
+                            <label for="old_password" class="form-label">Obecne hasło:</label>
+                            <input type="password" class="form-control" id="old_password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_password" class="form-label">Nowe hasło:</label>
+                            <input type="password" class="form-control" id="new_password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirm_password" class="form-label">Potwierdź nowe hasło:</label>
+                            <input type="password" class="form-control" id="confirm_password" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                    <button type="button" class="btn btn-primary" onclick="changePassword()">Zmień hasło</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+                        let passwordModal;
+        let isEditMode = false;
+        
+        function toggleEditForm() {
+            const form = document.getElementById('profileForm');
+            const editButton = document.querySelector('button[onclick="toggleEditForm()"]');
+            
+            isEditMode = !isEditMode;
+            
+            if (isEditMode) {
+                form.classList.remove('d-none');
+                editButton.textContent = 'Anuluj edycję';
+                editButton.classList.replace('btn-primary', 'btn-secondary');
+            } else {
+                form.classList.add('d-none');
+                editButton.textContent = 'Edytuj dane';
+                editButton.classList.replace('btn-secondary', 'btn-primary');
+                loadUserProfile(); // Reset form data
+            }
+        }
+
+        function updateDisplayData(userData) {
+            document.getElementById('displayUsername').textContent = userData.username || '-';
+            document.getElementById('displayEmail').textContent = userData.email || '-';
+            document.getElementById('displayFirstName').textContent = userData.first_name || '-';
+            document.getElementById('displayLastName').textContent = userData.last_name || '-';
+            document.getElementById('displayPhone').textContent = userData.phone_number || '-';
+        }
+        
+        function showAlert(message, type = 'success') {
+            const alertsDiv = document.getElementById('alerts');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type} alert-dismissible fade show`;
+            alert.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            alertsDiv.appendChild(alert);
+            setTimeout(() => alert.remove(), 5000);
+        }
+
+        function getCSRFToken() {
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                const [name, value] = cookie.trim().split('=');
+                if (name === 'csrftoken') return value;
+            }
+            return '';
+        }
+
+        async function loadUserProfile() {
+            try {
+                const response = await fetch('/api/auth/profile/', {
+                    headers: {
+                        'X-CSRFToken': getCSRFToken()
+                    }
+                });
+
+                if (!response.ok) throw new Error('Błąd pobierania danych profilu');
+                
+                const userData = await response.json();
+                updateDisplayData(userData);
+                
+                // Update form fields
+                document.getElementById('username').value = userData.username;
+                document.getElementById('email').value = userData.email;
+                document.getElementById('first_name').value = userData.first_name;
+                document.getElementById('last_name').value = userData.last_name;
+                document.getElementById('phone_number').value = userData.phone_number;
+                
+                if (userData.profile_picture) {
+                    document.getElementById('profileImage').src = userData.profile_picture;
+                }
+            } catch (error) {
+                showAlert(error.message, 'danger');
+            }
+        }
+
+        async function updateProfile(formData) {
+            try {
+                const response = await fetch('/api/auth/profile/', {
+                    method: 'PUT',
+                    headers: {
+                        'X-CSRFToken': getCSRFToken()
+                    },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Błąd aktualizacji profilu');
+                }
+
+                const updatedData = await response.json();
+                updateDisplayData(updatedData);
+                toggleEditForm();
+                showAlert('Profil został zaktualizowany pomyślnie');
+            } catch (error) {
+                showAlert(error.message, 'danger');
+            }
+        }
+
+        async function handleProfilePictureChange(input) {
+            if (input.files && input.files[0]) {
+                const formData = new FormData();
+                formData.append('profile_picture', input.files[0]);
+                
+                try {
+                    const response = await fetch('/api/auth/profile/', {
+                        method: 'PUT',
+                        headers: {
+                            'X-CSRFToken': getCSRFToken()
+                        },
+                        body: formData
+                    });
+
+                    if (!response.ok) throw new Error('Błąd podczas aktualizacji zdjęcia');
+                    
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        document.getElementById('profileImage').src = e.target.result;
+                    };
+                    reader.readAsDataURL(input.files[0]);
+                    
+                    showAlert('Zdjęcie profilowe zostało zaktualizowane');
+                } catch (error) {
+                    showAlert(error.message, 'danger');
+                }
+            }
+        }
+
+        function openChangePasswordModal() {
+            passwordModal = new bootstrap.Modal(document.getElementById('changePasswordModal'));
+            passwordModal.show();
+        }
+
+        async function changePassword() {
+            const oldPassword = document.getElementById('old_password').value;
+            const newPassword = document.getElementById('new_password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+
+            if (newPassword !== confirmPassword) {
+                showAlert('Hasła nie są identyczne', 'danger');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/auth/change_password/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCSRFToken()
+                    },
+                    body: JSON.stringify({
+                        old_password: oldPassword,
+                        new_password: newPassword
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Błąd zmiany hasła');
+                }
+
+                showAlert('Hasło zostało zmienione pomyślnie');
+                passwordModal.hide();
+                document.getElementById('passwordForm').reset();
+            } catch (error) {
+                showAlert(error.message, 'danger');
+            }
+        }
+
+        document.getElementById('profileForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            if (this.checkValidity()) {
+                const formData = new FormData();
+                formData.append('email', document.getElementById('email').value);
+                formData.append('first_name', document.getElementById('first_name').value);
+                formData.append('last_name', document.getElementById('last_name').value);
+                formData.append('phone_number', document.getElementById('phone_number').value);
+                
+                await updateProfile(formData);
+            }
+            this.classList.add('was-validated');
+        });
+
+        let topUpModal;
+        let stripe;
+        let elements;
+        let paymentElement;
+
+        async function loadBalance() {
+            try {
+                const response = await fetch('/api/auth/balance/');
+                if (!response.ok) throw new Error('Błąd pobierania stanu konta');
+                
+                const data = await response.json();
+                const balance = parseFloat(data.balance);
+                document.getElementById('userBalance').textContent = `${balance.toFixed(2)} PLN`;
+            } catch (error) {
+                showAlert(error.message, 'danger');
+            }
+        }
+
+        function openTopUpModal() {
+            topUpModal = new bootstrap.Modal(document.getElementById('topUpModal'));
+            topUpModal.show();
+            initializeStripe();
+        }
+
+        async function initializeStripe() {
+            if (!stripe) {
+                stripe = Stripe('your-publishable-key');
+            }
+
+            const response = await fetch('/api/payments/create-payment-intent/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRFToken()
+                },
+                body: JSON.stringify({
+                    amount: document.getElementById('amount').value || 10,
+                    payment_method: document.querySelector('input[name="paymentMethod"]:checked').value
+                })
+            });
+
+            const {clientSecret} = await response.json();
+
+            const options = {
+                clientSecret,
+                appearance: {
+                    theme: 'stripe',
+                },
+            };
+
+            elements = stripe.elements(options);
+            paymentElement = elements.create('payment');
+            paymentElement.mount('#paymentElement');
+        }
+
+        async function processTopUp() {
+            const submitButton = document.getElementById('submitButton');
+            submitButton.disabled = true;
+
+            try {
+                const {error} = await stripe.confirmPayment({
+                    elements,
+                    confirmParams: {
+                        return_url: window.location.origin + '/profile/',
+                    },
+                });
+
+                if (error) {
+                    throw new Error(error.message);
+                }
+
+                showAlert('Doładowanie zostało zrealizowane pomyślnie');
+                topUpModal.hide();
+                loadBalance();
+            } catch (error) {
+                showAlert(error.message, 'danger');
+            } finally {
+                submitButton.disabled = false;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadUserProfile();
+            loadBalance();
+            
+            const amountInput = document.getElementById('amount');
+            if (amountInput) {
+                amountInput.addEventListener('change', initializeStripe);
+            }
+            
+            const paymentMethodInputs = document.querySelectorAll('input[name="paymentMethod"]');
+            paymentMethodInputs.forEach(radio => {
+                radio.addEventListener('change', initializeStripe);
+            });
+        });
+    </script>
+</body>
+</html>

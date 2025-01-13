@@ -565,8 +565,8 @@ class CourseViewSet(viewsets.ModelViewSet):
             'progress_percentage': (completed_pages / total_pages * 100) if total_pages > 0 else 0,
             'pages_progress': pages_progress
         })
+
 class ChapterViewSet(viewsets.ModelViewSet):
-    queryset = Course.objects.all()
     serializer_class = ChapterSerializer
 
     def get_permissions(self):
@@ -578,12 +578,17 @@ class ChapterViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         course_id = self.kwargs.get('course_pk')
-        course = Course.objects.get(id=course_id)
-
         return Chapter.objects.filter(course_id=course_id)
+    
     def perform_create(self, serializer):
         course_id = self.kwargs.get('course_pk')
+        course = Course.objects.get(id=course_id)
+
+        if not (self.request.user == course.instructor or self.request.user in course.moderators.all()):
+            raise PermissionError("Nie masz uprawnień do dodawania rozdziałów do tego kursu")
+            
         serializer.save(course_id=course_id)
+
 class PageViewSet(viewsets.ModelViewSet):
     serializer_class = PageSerializer
 
@@ -933,9 +938,9 @@ class PaymentViewSet(viewsets.ViewSet):
             return Response({'error': 'Płatność nie została znaleziona'}, status=404)
         except Exception as e:
             return Response({'error': str(e)}, status=400)
+
 class PayoutHistoryView(APIView):
     permission_classes = [IsAuthenticated]
-
     def get(self, request):
         """
         Zwraca historię wypłat zalogowanego użytkownika.
@@ -1165,5 +1170,59 @@ def course_detail_view(request, course_id):
     })
 
 @login_required
-def create_chapter_view(request, course_id):
-    return render(request, 'create_chapter.html')
+def create_chapter_view(request, course_id=None):
+    try:
+        course = Course.objects.get(id=course_id)
+        if not (request.user == course.instructor or request.user in course.moderators.all()):
+            return redirect('home')  
+        return render(request, 'create_chapter.html')
+    except Course.DoesNotExist:
+        return redirect('home')  
+@login_required
+def profile_view(request):
+    return render(request, 'profile.html')
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_balance(request):
+    try:
+        balance = float(request.user.balance)
+        return Response({
+            'balance': balance
+        })
+    except (TypeError, ValueError):
+        return Response({
+            'balance': 0.0
+        })
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_top_up_intent(request):
+    try:
+        amount = float(request.data.get('amount', 0))
+        payment_method = request.data.get('payment_method')
+        
+        if amount < 10 or amount > 1000:
+            raise ValueError("Amount must be between 10 and 1000 PLN")
+            
+        intent = stripe.PaymentIntent.create(
+            amount=int(amount * 100),  
+            currency='pln',
+            payment_method_types=['card'],
+            metadata={'user_id': request.user.id, 'type': 'top_up'}
+        )
+        
+        return Response({
+            'clientSecret': intent.client_secret
+        })
+    except (ValueError, TypeError) as e:
+        return Response({
+            'error': str(e)
+        }, status=400)
+    
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_available_moderators(request):
+    users = User.objects.exclude(id=request.user.id)
+    serializer = UserSerializer(users, many=True)
+    return Response(serializer.data)

@@ -66,6 +66,7 @@
                 price: 0,
                 level: 'BEGINNER',
                 technologies: [],
+                moderators: [], // Nowe pole dla moderatorów
                 coverImage: null,
                 isPublished: false
             });
@@ -73,34 +74,39 @@
             const [message, setMessage] = React.useState({ type: '', text: '' });
             const [loading, setLoading] = React.useState(false);
             const [technologiesList, setTechnologiesList] = React.useState([]);
+            const [moderatorsList, setModeratorsList] = React.useState([]); // Nowa lista dla moderatorów
             const [isLoading, setIsLoading] = React.useState(true);
             const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
             React.useEffect(() => {
-                const fetchTechnologies = async () => {
+                const fetchData = async () => {
                     try {
                         setIsLoading(true);
-                        const response = await fetch('/api/technologies/');
-                        if (!response.ok) {
-                            throw new Error('Failed to fetch technologies');
+                        const [technologiesResponse, usersResponse] = await Promise.all([
+                            fetch('/api/technologies/'),
+                            fetch('/api/users/') // Endpoint do pobrania użytkowników - trzeba go utworzyć
+                        ]);
+
+                        if (!technologiesResponse.ok || !usersResponse.ok) {
+                            throw new Error('Failed to fetch data');
                         }
-                        const data = await response.json();
-                        if (Array.isArray(data)) {
-                            setTechnologiesList(data);
-                        } else {
-                            console.error('Received non-array data:', data);
-                            setTechnologiesList([]);
-                        }
+
+                        const [techData, userData] = await Promise.all([
+                            technologiesResponse.json(),
+                            usersResponse.json()
+                        ]);
+
+                        setTechnologiesList(Array.isArray(techData) ? techData : []);
+                        setModeratorsList(Array.isArray(userData) ? userData : []);
                     } catch (error) {
-                        console.error('Error fetching technologies:', error);
-                        setMessage({ type: 'error', text: 'Nie udało się załadować technologii' });
-                        setTechnologiesList([]);
+                        console.error('Error fetching data:', error);
+                        setMessage({ type: 'error', text: 'Nie udało się załadować danych' });
                     } finally {
                         setIsLoading(false);
                     }
                 };
 
-                fetchTechnologies();
+                fetchData();
             }, []);
 
             const handleInputChange = (e) => {
@@ -133,6 +139,20 @@
                 }));
             };
 
+            const handleModeratorsChange = (e) => {
+                const options = e.target.options;
+                const selected = [];
+                for (let i = 0; i < options.length; i++) {
+                    if (options[i].selected) {
+                        selected.push(options[i].value);
+                    }
+                }
+                setFormData(prev => ({
+                    ...prev,
+                    moderators: selected
+                }));
+            };
+
             const handleSubmit = async (e) => {
                 e.preventDefault();
                 setLoading(true);
@@ -140,9 +160,9 @@
                 try {
                     const formDataToSend = new FormData();
                     Object.keys(formData).forEach(key => {
-                        if (key === 'technologies') {
-                            formData[key].forEach(tech => {
-                                formDataToSend.append('technologies', tech);
+                        if (key === 'technologies' || key === 'moderators') {
+                            formData[key].forEach(item => {
+                                formDataToSend.append(key, item);
                             });
                         } else if (key === 'coverImage' && formData[key]) {
                             formDataToSend.append('cover_image', formData[key]);
@@ -271,6 +291,31 @@
                                             </small>
                                         </div>
 
+                                        <div className="mb-3">
+                                                <label className="form-label">Moderatorzy kursu:</label>
+                                                <select
+                                                    multiple
+                                                    name="moderators"
+                                                    value={formData.moderators}
+                                                    onChange={handleModeratorsChange}
+                                                    className="form-select"
+                                                >
+                                                    {isLoading ? (
+                                                        <option>Ładowanie moderatorów...</option>
+                                                    ) : moderatorsList && moderatorsList.length > 0 ? (
+                                                        moderatorsList.map(user => (
+                                                            <option key={user.id} value={user.id}>
+                                                                {user.username}
+                                                            </option>
+                                                        ))
+                                                    ) : (
+                                                        <option>Brak dostępnych moderatorów</option>
+                                                    )}
+                                                </select>
+                                                <small className="form-text text-muted">
+                                                    Przytrzymaj Ctrl (Cmd na Mac) aby wybrać więcej opcji.
+                                                </small>
+                                            </div>
                                         <div className="mb-3">
                                             <label className="form-label">Okładka kursu:</label>
                                             <input

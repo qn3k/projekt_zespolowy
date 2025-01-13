@@ -22,7 +22,8 @@ from rest_framework_nested import routers
 from rest_framework.routers import DefaultRouter
 from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view, PayoutHistoryView, register_view, activate_view,\
     CourseViewSet, ChapterViewSet, PageViewSet, password_reset_request_view, password_reset_confirm_view,create_course,technology_management_view, \
-    PaymentViewSet, TechnologyViewSet, course_detail_view,create_chapter_view
+    PaymentViewSet, TechnologyViewSet, course_detail_view, create_chapter_view, profile_view, get_balance, get_available_moderators
+
 
 router = DefaultRouter()
 router.register(r'auth', AuthViewSet, basename='auth')
@@ -49,6 +50,7 @@ urlpatterns = [
     path('api/', include(courses_router.urls)),
     path('api/', include(chapters_router.urls)),
     path('api/', include(router.urls)),
+    path('api/users/', get_available_moderators, name='available-moderators'),
     path('login/', login_view, name='login'),
     path('logout/', AuthViewSet.as_view({'post': 'logout'}), name='auth-logout'),
     path('', home_view, name='home'),
@@ -56,9 +58,12 @@ urlpatterns = [
     path('activate/', activate_view, name='activate'),
     path('reset-password/', password_reset_request_view, name='request_password_reset'),
     path('create-course/', create_course, name='create_course'),
-    path('api/payout-history/', PayoutHistoryView.as_view(), name='payout-history'),
     path('courses/<int:course_id>/', course_detail_view, name='course_detail'),
-    path('courses/<int:course_id>/add-chapter/', create_chapter_view, name='create_chapter'),
+    path('courses/add-chapter/', create_chapter_view, name='create_chapter'),
+    path('courses/<int:course_id>/add-chapter/', create_chapter_view, name='create_chapter_with_id'),
+    path('profile/', profile_view, name='profile'),
+    path('api/auth/balance/', get_balance, name='get-balance'),
+    path('api/payout-history/', PayoutHistoryView.as_view(), name='payout-history'),
     path('technologies/', technology_management_view, name='technology_management'),
     path('reset-password-confirm/<uidb64>/<token>/', password_reset_confirm_view, name='password_reset_confirm')
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

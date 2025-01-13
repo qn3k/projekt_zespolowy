@@ -62,36 +62,13 @@
         const CreateChapter = () => {
             const [formData, setFormData] = React.useState({
                 title: '',
-                course: '',
                 order: 1
             });
 
-            const [courses, setCourses] = React.useState([]);
             const [message, setMessage] = React.useState({ type: '', text: '' });
             const [loading, setLoading] = React.useState(false);
-            const [isLoadingCourses, setIsLoadingCourses] = React.useState(true);
+            const courseId = window.location.pathname.split('/')[2]; // Get course ID from URL
             const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-
-            React.useEffect(() => {
-                const fetchCourses = async () => {
-                    try {
-                        setIsLoadingCourses(true);
-                        const response = await fetch('/api/courses/my_courses/');
-                        if (!response.ok) {
-                            throw new Error('Failed to fetch courses');
-                        }
-                        const data = await response.json();
-                        setCourses(data);
-                    } catch (error) {
-                        console.error('Error fetching courses:', error);
-                        setMessage({ type: 'error', text: 'Nie udało się załadować kursów' });
-                    } finally {
-                        setIsLoadingCourses(false);
-                    }
-                };
-
-                fetchCourses();
-            }, []);
 
             const handleInputChange = (e) => {
                 const { name, value } = e.target;
@@ -106,11 +83,7 @@
                 setLoading(true);
 
                 try {
-                    if (!formData.course) {
-                        throw new Error('Wybierz kurs');
-                    }
-
-                    const response = await fetch(`/api/courses/${formData.course}/chapters/`, {
+                    const response = await fetch(`/api/courses/${courseId}/chapters/`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -130,7 +103,7 @@
 
                     setMessage({ type: 'success', text: 'Dział został utworzony pomyślnie!' });
                     setTimeout(() => {
-                        window.location.href = `/courses/${formData.course}`;
+                        window.location.href = `/courses/${courseId}`;
                     }, 2000);
                 } catch (error) {
                     setMessage({ type: 'error', text: error.message });
@@ -155,26 +128,6 @@
                                     )}
 
                                     <form onSubmit={handleSubmit} className="needs-validation">
-                                        <div className="mb-3">
-                                            <label className="form-label">Wybierz kurs:</label>
-                                            <select
-                                                name="course"
-                                                value={formData.course}
-                                                onChange={handleInputChange}
-                                                className="form-select"
-                                                required
-                                            >
-                                                <option value="">Wybierz kurs...</option>
-                                                {isLoadingCourses ? (
-                                                    <option>Ładowanie kursów...</option>
-                                                ) : courses.map(course => (
-                                                    <option key={course.id} value={course.id}>
-                                                        {course.title}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-
                                         <div className="mb-3">
                                             <label className="form-label">Tytuł działu:</label>
                                             <input
@@ -208,11 +161,11 @@
                                             <button
                                                 type="submit"
                                                 className="btn btn-primary"
-                                                disabled={loading || isLoadingCourses}
+                                                disabled={loading}
                                             >
                                                 {loading ? 'Tworzenie...' : 'Utwórz dział'}
                                             </button>
-                                            <a href="{% url 'home' %}" className="btn btn-secondary">
+                                            <a href={`/courses/${courseId}`} className="btn btn-secondary">
                                                 Anuluj
                                             </a>
                                         </div>

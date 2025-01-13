@@ -21,20 +21,32 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'home' %}">Strona Główna</a>
                         </li>
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Kursy</a>
-                            <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                                <li><a class="dropdown-item" href="">Matematyka</a></li>
-                                <li><a class="dropdown-item" href="">Nauka</a></li>
-                                <li><a class="dropdown-item" href="">Historia</a></li>
-                            </ul>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link active" href="{% url 'login' %}">Logowanie</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'register' %}">Rejestracja</a>
-                        </li>
+                        {% if user.is_authenticated %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Profil</a>
+                                <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                                    <li><a class="dropdown-item" href="">Moje kursy</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
+                                    <li><a class="dropdown-item" href="">Mój profil</a></li>
+                                    <li>                                
+                                        <form method="post" action="{% url 'auth-logout' %}" class="d-inline" id="logout-form">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item" style="background: none;">Wyloguj</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                                <li class="nav-item">
+                                    <span class="nav-link">Witaj, {{ user.username }}!</span>
+                                </li>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'login' %}">Logowanie</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'register' %}">Rejestracja</a>
+                            </li>
+                        {% endif %}
                     </ul>
                 </div>
             </div>

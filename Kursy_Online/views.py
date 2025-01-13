@@ -1122,3 +1122,11 @@ class TechnologyViewSet(viewsets.ModelViewSet):
 def technology_management_view(request):
     return render(request, 'technology_management.html')    
 
+def course_detail_view(request, course_id):
+    return render(request, 'course_detail.html', {
+        'course_id': course_id
+    })
+
+@login_required
+def create_chapter_view(request, course_id):
+    return render(request, 'create_chapter.html')

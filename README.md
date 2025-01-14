@@ -96,10 +96,10 @@ Aplikacja to kompleksowy system zarządzania kursami online, umożliwiający rej
 ---
 
 ## Opis funkcjonalności
-
+ 
+  ![Zrzut ekranu 2025-01-14 113447](https://github.com/user-attachments/assets/7a1a0b69-319a-4d1b-828f-c9fbb30c32a2)
+  
 ### 1. Autoryzacja i uwierzytelnianie
-
-   ![Zrzut ekranu 2025-01-14 113447](https://github.com/user-attachments/assets/7a1a0b69-319a-4d1b-828f-c9fbb30c32a2)
 
 - **Rejestracja**:
   - Endpoint: `/api/auth/register/`

@@ -16,7 +16,7 @@
         <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
             <div class="container-fluid">
                 <a class="navbar-brand" href="#"><img src="{% static 'logo.png' %}" alt="Logo" class="logo"></a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="collapse navbar-collapse" id="navbarNav">
@@ -26,21 +26,21 @@
                         </li>
                         {% if user.is_authenticated %}
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">Profil</a>
-                                <ul class="dropdown-menu">
-                                    <li><a class="dropdown-item" href="">Moje kursy</a></li>
+                                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Profil</a>
+                                <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                                    <li><a class="dropdown-item" href="{% url 'my_courses' %}">Moje kursy</a></li>
                                     <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
-                                    <li><a class="dropdown-item" href="">Mój profil</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'profile' %}">Mój profil</a></li>
                                     <li>                                
                                         <form method="post" action="{% url 'auth-logout' %}" class="d-inline" id="logout-form">
-                                            {% csrf_token %}
-                                            <button type="submit" class="dropdown-item">Wyloguj</button>
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item" style="background: none;">Wyloguj</button>
                                         </form>
                                     </li>
                                 </ul>
-                            </li>
-                            <li class="nav-item">
-                                <span class="nav-link">Witaj, {{ user.username }}!</span>
+                                <li class="nav-item">
+                                    <span class="nav-link">Witaj, {{ user.username }}!</span>
+                                </li>
                             </li>
                         {% else %}
                             <li class="nav-item">
@@ -62,30 +62,35 @@
         const appData = {
             courseId: "{{ course_id }}",
             isAuthenticated: "{% if user.is_authenticated %}true{% else %}false{% endif %}" === "true",
-            csrfToken: "{{ csrf_token }}"
+            csrfToken: "{{ csrf_token }}",
+            currentUsername: "{{ user.username }}"
         };
 
-        const CourseDetail = ({ courseId, isAuthenticated, csrfToken }) => {
+        const CourseDetail = ({isAuthenticated, csrfToken, currentUsername }) => {
             const [course, setCourse] = React.useState(null);
             const [loading, setLoading] = React.useState(true);
             const [error, setError] = React.useState(null);
-            const [isInstructor, setIsInstructor] = React.useState(false);
-            const [isModerator, setIsModerator] = React.useState(false);
+            const [hasModeratorAccess, setHasModeratorAccess] = React.useState(false);
+
+            const courseId = "{{ course_id }}";
 
             React.useEffect(() => {
-                const fetchCourse = async () => {
+                const checkAccess = async () => {
                     try {
                         const response = await fetch(`/api/courses/${courseId}/`);
                         if (!response.ok) throw new Error('Failed to fetch course');
                         const data = await response.json();
                         setCourse(data);
                         
-                        if (data.instructor?.username === "{{ user.username }}") {
-                            setIsInstructor(true);
-                        }
-                        if (data.moderators?.some(mod => mod.username === "{{ user.username }}")) {
-                            setIsModerator(true);
-                        }
+                        // Check if user is instructor
+                        const isInstructor = data.instructor?.username === currentUsername;
+                        
+                        // Check if user is in moderators array
+                        const isModerator = data.moderators?.some(
+                            mod => mod.username === currentUsername
+                        );
+                        
+                        setHasModeratorAccess(isInstructor || isModerator);
                     } catch (err) {
                         setError(err.message);
                     } finally {
@@ -93,12 +98,12 @@
                     }
                 };
 
-                fetchCourse();
-            }, [courseId]);
+                checkAccess();
+            }, [courseId, currentUsername]);
 
-            if (loading) return <div>Loading...</div>;
-            if (error) return <div>Error: {error}</div>;
-            if (!course) return <div>No course data available</div>;
+            if (loading) return <div className="container mt-5"><div className="alert alert-info">Loading...</div></div>;
+            if (error) return <div className="container mt-5"><div className="alert alert-danger">Error: {error}</div></div>;
+            if (!course) return <div className="container mt-5"><div className="alert alert-warning">No course data available</div></div>;
 
             return (
                 <div className="container my-5">
@@ -130,19 +135,24 @@
                             <div className="mt-4">
                                 <div className="d-flex justify-content-between align-items-center">
                                     <h4>Zawartość kursu</h4>
-                                    {(isInstructor || isModerator) && (
-                                        <a href={`/courses/${courseId}/add-chapter`} 
-                                           className="btn btn-primary">
-                                            Dodaj nowy dział
-                                        </a>
+                                    {isAuthenticated && (
+                                            <a href={`/courses/${courseId}/add-chapter`} 
+                                               className="btn btn-primary">
+                                                Dodaj nowy dział
+                                            </a>
                                     )}
-                                </div>
+                                </div>                               
                                 {course.chapters?.length > 0 ? (
                                     <div className="chapters mt-3">
                                         {course.chapters.map(chapter => (
                                             <div key={chapter.id} className="card mb-2">
                                                 <div className="card-body">
-                                                    <h5>{chapter.title}</h5>
+                                                    <a 
+                                                        href={`/courses/${courseId}/chapters/${chapter.id}`}
+                                                        className="text-decoration-none text-dark"
+                                                    >
+                                                        <h5>{chapter.title}</h5>
+                                                    </a>
                                                 </div>
                                             </div>
                                         ))}
@@ -174,9 +184,9 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(
             <CourseDetail 
-                courseId={appData.courseId} 
                 isAuthenticated={appData.isAuthenticated} 
-                csrfToken={appData.csrfToken} 
+                csrfToken={appData.csrfToken}
+                currentUsername={appData.currentUsername}
             />
         );
     </script>

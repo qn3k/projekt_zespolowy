@@ -256,7 +256,7 @@ class PublicCourseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'description', 'cover_image',
             'price', 'level', 'instructor', 'content',
-            'average_rating', 'total_reviews'
+            'average_rating', 'total_reviews', 'moderators'
         ]
 
     def get_content(self, obj):

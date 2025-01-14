@@ -1,0 +1,187 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Szczegóły działu</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'styles.css' %}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#"><img src="{% static 'logo.png' %}" alt="Logo" class="logo"></a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'home' %}">Strona Główna</a>
+                        </li>
+                        {% if user.is_authenticated %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">Profil</a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="">Moje kursy</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
+                                    <li><a class="dropdown-item" href="">Mój profil</a></li>
+                                    <li>                                
+                                        <form method="post" action="{% url 'auth-logout' %}" class="d-inline" id="logout-form">
+                                            {% csrf_token %}
+                                            <button type="submit" class="dropdown-item">Wyloguj</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <span class="nav-link">Witaj, {{ user.username }}!</span>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'login' %}">Logowanie</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'register' %}">Rejestracja</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const ChapterDetail = () => {
+            const [chapter, setChapter] = React.useState(null);
+            const [loading, setLoading] = React.useState(true);
+            const [error, setError] = React.useState(null);
+            const [showCreatePageModal, setShowCreatePageModal] = React.useState(false);
+            const courseId = window.location.pathname.split('/')[2];
+            const chapterId = window.location.pathname.split('/')[4];
+
+            React.useEffect(() => {
+                fetchChapter();
+            }, []);
+
+            const fetchChapter = async () => {
+                try {
+                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/`);
+                    if (!response.ok) throw new Error('Failed to fetch chapter');
+                    const data = await response.json();
+                    setChapter(data);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const CreatePageModal = () => (
+                <div className={`modal ${showCreatePageModal ? 'd-block' : 'd-none'}`}>
+                    <div className="modal-dialog">
+                        <div className="modal-content">
+                            <div className="modal-header">
+                                <h5 className="modal-title">Dodaj nową stronę</h5>
+                                <button type="button" className="btn-close" onClick={() => setShowCreatePageModal(false)}></button>
+                            </div>
+                            <div className="modal-body">
+                                <h6 className="mb-4">Wybierz typ strony:</h6>
+                                <div className="d-grid gap-3">
+                                    <a href={`/courses/${courseId}/chapters/${chapterId}/pages/create/content`} 
+                                       className="btn btn-outline-primary">
+                                        <i className="bi bi-file-text me-2"></i>
+                                        Strona z treścią
+                                    </a>
+                                    <a href={`/courses/${courseId}/chapters/${chapterId}/pages/create/quiz`} 
+                                       className="btn btn-outline-primary">
+                                        <i className="bi bi-question-circle me-2"></i>
+                                        Quiz
+                                    </a>
+                                    <a href={`/courses/${courseId}/chapters/${chapterId}/pages/create/coding`} 
+                                       className="btn btn-outline-primary">
+                                        <i className="bi bi-code-slash me-2"></i>
+                                        Zadanie programistyczne
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            if (loading) return <div className="container mt-4">Ładowanie...</div>;
+            if (error) return <div className="container mt-4">Błąd: {error}</div>;
+            if (!chapter) return <div className="container mt-4">Nie znaleziono działu</div>;
+
+            return (
+                <div className="container my-5">
+                    <div className="row">
+                        <div className="col-12">
+                            <div className="d-flex justify-content-between align-items-center mb-4">
+                                <h2>{chapter.title}</h2>
+                                <button 
+                                    className="btn btn-primary"
+                                    onClick={() => setShowCreatePageModal(true)}>
+                                    Dodaj stronę
+                                </button>
+                            </div>
+
+                            {chapter.pages?.length > 0 ? (
+                                <div className="list-group">
+                                    {chapter.pages.map(page => (
+                                        <div key={page.id} 
+                                             className="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h5 className="mb-1">{page.title}</h5>
+                                                <small className="text-muted">
+                                                    Typ: {
+                                                        page.type === 'CONTENT' ? 'Strona z treścią' :
+                                                        page.type === 'QUIZ' ? 'Quiz' :
+                                                        page.type === 'CODING' ? 'Zadanie programistyczne' :
+                                                        'Nieznany'
+                                                    }
+                                                </small>
+                                            </div>
+                                            <div>
+                                                <a href={`/courses/${courseId}/chapters/${chapterId}/pages/${page.id}/edit`}
+                                                   className="btn btn-sm btn-outline-primary me-2">
+                                                    Edytuj
+                                                </a>
+                                                <button className="btn btn-sm btn-outline-danger">
+                                                    Usuń
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="alert alert-info">
+                                    Ten dział nie ma jeszcze żadnych stron. Dodaj pierwszą stronę!
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <CreatePageModal />
+                    {showCreatePageModal && (
+                        <div className="modal-backdrop fade show"></div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ChapterDetail />);
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

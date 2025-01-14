@@ -11,6 +11,8 @@ from django.utils.crypto import get_random_string
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils import timezone
+from django.http import Http404, HttpResponseForbidden
+from functools import wraps
 from rest_framework import permissions
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
@@ -224,6 +226,20 @@ class AuthViewSet(viewsets.ViewSet):
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'error': 'Invalid reset link'}, status=status.HTTP_400_BAD_REQUEST)
 
+def moderator_required(view_func):
+    @wraps(view_func)
+    def _wrapped_view(request, course_id, *args, **kwargs):
+        try:
+            course = Course.objects.get(id=course_id)
+            if not (request.user == course.instructor or request.user in course.moderators.all()):
+                messages.error(request, "Nie masz uprawnień do wykonania tej operacji.")
+                return redirect('course_detail', course_id=course_id)
+            return view_func(request, course_id, *args, **kwargs)
+        except Course.DoesNotExist:
+            messages.error(request, "Kurs nie został znaleziony.")
+            return redirect('home')
+    return _wrapped_view
+
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
@@ -249,14 +265,17 @@ class CourseViewSet(viewsets.ModelViewSet):
 
             if self.kwargs.get('pk'):
                 course = Course.objects.get(id=self.kwargs.get('pk'))
-                has_access = Payment.objects.filter(
-                    user=self.request.user,
-                    course=course,
-                    status='ACCEPTED'
-                ).exists() or course.instructor == self.request.user
+
+                has_access = (
+                    course.instructor == self.request.user or 
+                    self.request.user in course.moderators.all() or
+                    Payment.objects.filter(
+                        user=self.request.user,
+                        course=course,
+                        status='ACCEPTED'
+                    ).exists()
+                )
                 return CourseSerializer if has_access else PublicCourseSerializer
-            else:
-                return PublicCourseSerializer
         return CourseSerializer
 
     
@@ -491,22 +510,26 @@ class CourseViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
     def get_queryset(self):
-        print("Wywołanie get_queryset")  
         queryset = Course.objects.annotate(
             average_rating=Avg('reviews__rating'),
             total_reviews=Count('reviews')
         ).prefetch_related('reviews', 'technologies')
-
-        sort_by = self.request.query_params.get('sort', 'title')
-        print(f"Sortowanie po: {sort_by}")  
-
-        if sort_by == 'date':
-            queryset = queryset.order_by('-created_at')
-        elif sort_by == 'rating':
-            queryset = queryset.order_by('-average_rating')
-        else:
-            queryset = queryset.order_by('title')
-
+        
+        # Jeśli użytkownik nie jest zalogowany, pokazuj tylko opublikowane kursy
+        if not self.request.user.is_authenticated:
+            return queryset.filter(is_published=True)
+            
+        # Dla zalogowanych użytkowników:
+        # - Instruktorzy i moderatorzy widzą swoje kursy
+        # - Pozostali użytkownicy widzą zakupione kursy i opublikowane
+        if not (self.request.user.is_staff or self.request.user.is_superuser):
+            return queryset.filter(
+                models.Q(is_published=True) |
+                models.Q(instructor=self.request.user) |
+                models.Q(moderators=self.request.user) |
+                models.Q(payments__user=self.request.user, payments__status='ACCEPTED')
+            ).distinct()
+        
         return queryset
 
     @action(detail=True, methods=['post'])
@@ -1170,14 +1193,10 @@ def course_detail_view(request, course_id):
     })
 
 @login_required
-def create_chapter_view(request, course_id=None):
-    try:
-        course = Course.objects.get(id=course_id)
-        if not (request.user == course.instructor or request.user in course.moderators.all()):
-            return redirect('home')  
-        return render(request, 'create_chapter.html')
-    except Course.DoesNotExist:
-        return redirect('home')  
+@moderator_required
+def create_chapter_view(request, course_id):
+    return render(request, 'create_chapter.html')
+
 @login_required
 def profile_view(request):
     return render(request, 'profile.html')
@@ -1226,3 +1245,37 @@ def get_available_moderators(request):
     users = User.objects.exclude(id=request.user.id)
     serializer = UserSerializer(users, many=True)
     return Response(serializer.data)
+
+@login_required
+def my_courses_view(request):
+    return render(request, 'my_courses.html')
+
+@login_required
+def chapter_detail_view(request, course_id, chapter_id):
+    try:
+        chapter = Chapter.objects.select_related('course').prefetch_related('pages').get(
+            id=chapter_id, 
+            course_id=course_id
+        )
+        
+        course = chapter.course
+        has_access = (
+            course.instructor == request.user or 
+            request.user in course.moderators.all() or
+            Payment.objects.filter(
+                user=request.user, 
+                course=course, 
+                status='ACCEPTED'
+            ).exists()
+        )
+        
+        if not has_access:
+            return HttpResponseForbidden("Nie masz dostępu do tego rozdziału")
+            
+        return render(request, 'chapter_detail.html', {
+            'course_id': course_id,
+            'chapter_id': chapter_id
+        })
+        
+    except Chapter.DoesNotExist:
+        raise Http404("Rozdział nie istnieje")

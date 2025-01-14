@@ -28,9 +28,9 @@
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Profil</a>
                                 <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                                    <li><a class="dropdown-item" href="">Moje kursy</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'my_courses' %}">Moje kursy</a></li>
                                     <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
-                                    <li><a class="dropdown-item" href="">Mój profil</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'profile' %}">Mój profil</a></li>
                                     <li>                                
                                         <form method="post" action="{% url 'auth-logout' %}" class="d-inline" id="logout-form">
                                         {% csrf_token %}

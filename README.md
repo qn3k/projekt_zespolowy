@@ -1,59 +1,261 @@
 # Strona do kursów
-Wybrany przez nas temat systemu informatycznego to strona internetowa do tworzenia i realizacji kursów. W dzisiejszych czasach, w dobie szybkiego rozwoju technologii i zmieniających się potrzeb edukacyjnych, konieczność dostarczenia efektywnych, elastycznych i dostępnych rozwiązań edukacyjnych jest niezwykle istotna. Nasza strona internetowa do tworzenia i realizowania kursów oferuje kompleksowe i nowoczesne rozwiązanie edukacyjne. Pozwala autorom kursów tworzyć materiały edukacyjne z różnych dziedzin oraz dodawać interaktywne elementy, takie jak testy i materiały multimedialne. Uczestnicy kursów mogą dostosować naukę do swojego harmonogramu, ucząc się z dowolnego miejsca i o dowolnej porze. Dzięki narzędziom analizy danych, zarówno autorzy, jak i uczestnicy, mogą monitorować postępy i dostosowywać swoje działania w celu osiągnięcia najlepszych rezultatów. Nasza platforma zapewnia efektywne i elastyczne doświadczenie edukacyjne, które odpowiada współczesnym potrzebom nauki online.
+## Wprowadzenie
 
-Wymagania funkcjonalne:
-1. Logowanie
-- Umożliwienie użytkownikom rejestracji na platformie za pomocą adresu e-mail lub kont społecznościowych.
-- Weryfikacja tożsamości podczas rejestracji poprzez potwierdzenie adresu e-mail lub kodu weryfikacyjnego.  
-- Możliwość edycji danych osobowych, takich jak imię, nazwisko, adres e-mail, zdjęcie profilowe itp.
-- Możliwość przypomnienia hasła przy wykorzystaniu adresu e-mail/numeru telefonu
-- Możliwość zmiany hasła po podaniu kodu z maila.
-- Możliwość usunięcia konta po podaniu kodu z maila.
-- Propozycja zmiany hasła po 6 miesiącach od poprzedniej zmiany.
-- Panel administracyjny dla użytkowników umożliwiający zarządzanie ich kontem, subskrypcjami, kursami itp.   
-- Panel administracyjny dla administratora strony.
+Aplikacja to kompleksowy system zarządzania kursami online, umożliwiający rejestrację użytkowników, przeglądanie kursów, płatności, zarządzanie treścią kursów oraz wiele innych funkcjonalności. Aplikacja została zbudowana z wykorzystaniem frameworka Django, Django REST Framework oraz Stripe.
 
-2. Tworzenie kursów i administracja
-- Interfejs do tworzenia kursów obejmujący możliwość dodawania materiałów edukacyjnych, lekcji, testów itp.
-- Możliwość określenia daty rozpoczęcia i zakończenia kursu oraz preferowanego harmonogramu lekcji.
-- Funkcja umożliwiająca strukturyzację kursu poprzez tworzenie sekcji i podsekcji z lekcjami oraz zadaniami.
--Możliwość tworzenia interaktywnych zajęć, takich jak quizy, gry, ćwiczenia praktyczne itp.
-- Możliwość zarządzania dostępem do kursów poprzez ustawianie różnych poziomów dostępu, np. kursy publiczne dostępne dla wszystkich użytkowników, kursy prywatne dostępne tylko dla określonych grup uczestników.
-- Dodawanie komentarzy pod kursami.
-- Możliwość dostosowania kursu do różnych poziomów zaawansowania poprzez tworzenie różnych wersji kursu dla początkujących, średnio zaawansowanych i zaawansowanych uczestników.
-- Funkcja umożliwiająca personalizację materiałów edukacyjnych w zależności od preferencji i potrzeb uczestników.
-- Funkcja umożliwiająca przydzielenie uprawnień administratora lub moderatora dla instruktorów, co pozwala im na zarządzanie kursami, uczestnikami i ocenami.
-- Panel administracyjny dla instruktorów umożliwiający zarządzanie kursami.
-- Panel administracyjny umożliwiający przeglądanie listy uczestników kursu oraz ich danych kontaktowych.
-- Funkcja dodawania nowych uczestników do kursu oraz zarządzania subskrypcjami.
-- Potwierdzenie wiadomością email dołączenia do kursu.
-- Wiadomości przypominające o planowanych lekcjach.
-- Możliwość edycji kursu w trakcie jego trwania.
-- Możliwość usunięcia kursu i automatyczna informacja wiadomością email o usunięciu kursu dla jego uczestników.
-- Wsparcie techniczne na wypadek występowania błędów w aplikacji.
+---
 
-3. Szukanie kursów i nauka
-- Interfejs umożliwiający przeglądanie i wyszukiwanie dostępnych kursów zgodnie z zainteresowaniami, tematyką, poziomem trudności, nazwą itp.
-- Możliwość filtrowania wyników wyszukiwania według różnych kryteriów, takich jak data rozpoczęcia kursu, język, długość kursu itp.
-- Dostęp do szczegółowych informacji na temat każdego kursu, w tym opisu kursu, harmonogramu zajęć, materiałów edukacyjnych, wymagań technicznych, ocen innych uczestników itp.
-- Możliwość zapoznania się z profilem instruktora prowadzącego kurs oraz jego doświadczeniem i kwalifikacjami.
-- Prosty proces rejestracji na wybrane kursy, który może obejmować wypełnienie formularza rejestracyjnego oraz dokonanie płatności (jeśli kurs jest płatny).
-- Potwierdzenie rejestracji poprzez e-mail lub powiadomienie na platformie.
-- Możliwość dostępu do wszystkich materiałów kursowych po zarejestrowaniu się na kurs, w tym prezentacje, nagrania wideo, pliki tekstowe, testy, zadania domowe itp.
--Interfejs umożliwiający łatwe nawigowanie między materiałami kursowymi i szybkie znalezienie potrzebnych informacji.
-- Dostęp do indywidualnego panelu użytkownika umożliwiającego śledzenie postępów w kursach, w tym ukończonych lekcji, wyników testów, wykonanych zadań itp.
-- Możliwość monitorowania własnych osiągnięć i postępów w czasie rzeczywistym.
-- Funkcja umożliwiająca komunikację z instruktorem kursu poprzez prywatne wiadomości, czat lub forum dyskusyjne.
-- Możliwość oceniania kursów oraz pozostawiania opinii i komentarzy na temat jakości kursu, materiałów edukacyjnych, instruktora itp.
-- Funkcja umożliwiająca uczestnikom dzielenie się swoimi doświadczeniami i opiniami, co może być przydatne dla innych potencjalnych uczestników.
-4. System płatności
-- Integracja metody płatności kartą, PayPay, Google Pay, Apple Pay, BLIK
-- Możliwość płatności za kurs w formie jednorazowej opłaty.
-- Wiadomość potwierdzająca płatność.
-- Funkcja umożliwiająca tworzenia kodów rabatowych i promocji. 
-- Możliwość określenia terminu obowiązujących rabatów oraz ich monitorowanie. 
-- Historia płatności użytkownika pozwalająca na przeglądanie wszelkich transakcji, ich dat i kwot. 
+## Wymagania systemowe
 
+1. Python 3.x+
+2. Django 4.x+
+3. Stripe CLI (do testowania płatności)
+4. Serwer e-mail (SMTP) do wysyłki wiadomości e-mail
+5. Baza danych SQLite lub inna zgodna z Django ORM
 
+---
+
+## Uruchomienie projektu
+
+1. Sklonuj repozytorium:
+
+   ```bash
+   git clone <adres_repozytorium>
+   ```
+
+2. Zainstaluj wymagane biblioteki:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Wykonaj migracje bazy danych:
+
+   ```bash
+   python manage.py migrate
+   ```
+
+4. Uruchom serwer deweloperski:
+
+   ```bash
+   python manage.py runserver
+   ```
+
+---
+
+## Technologie użyte w projekcie
+
+1. Django 5.1.4
+2. Django REST Framework
+3. Stripe API
+4. SQLite
+5. HTML, CSS, JavaScript (dla widoków)
+
+---
+
+## Struktura projektu
+
+### Główne komponenty aplikacji:
+
+1. **Autoryzacja i uwierzytelnianie**:
+
+   - Rejestracja użytkowników
+   - Logowanie/wylogowywanie
+   - Resetowanie hasła
+
+2. **Zarządzanie kursami**:
+
+   - Tworzenie kursów, rozdziałów i stron kursu
+   - Dodawanie moderatorów i recenzji kursów
+   - Filtry i wyszukiwanie kursów
+
+3. **Płatności**:
+
+   - Integracja z Stripe
+   - Zarządzanie płatnościami za kursy
+   - Historia wypłat instruktora
+
+4. **Treści multimedialne i zadania**:
+
+   - Obsługa treści, quizów, ćwiczeń programistycznych
+   - Przypadki testowe dla zadań programistycznych
+
+5. **Role użytkowników**:
+
+   - Instruktorzy
+   - Moderatorzy
+   - Uczniowie
+
+6. **Widoki dla administratorów i użytkowników**:
+
+   - Widoki HTML dla użytkowników końcowych
+   - API REST dla integracji
+
+---
+
+## Opis funkcjonalności
+
+### 1. Autoryzacja i uwierzytelnianie
+
+- **Rejestracja**:
+
+  - Endpoint: `/api/auth/register/`
+  - Walidacja danych użytkownika i wysyłka kodu weryfikacyjnego na e-mail.
+
+- **Logowanie**:
+
+  - Endpoint: `/api/auth/login/`
+  - Uwierzytelnianie za pomocą nazwy użytkownika i hasła.
+
+- **Resetowanie hasła**:
+
+  - Proces:
+    - Wysłanie e-maila z linkiem do resetowania hasła.
+    - Walidacja tokenu i zmiana hasła.
+
+- **Profil użytkownika**:
+
+  - Endpoint: `/api/auth/profile/`
+  - Pobieranie i edycja danych profilu (np. zdjęcia profilowego).
+
+#### Przykładowy fragment kodu: Rejestracja użytkownika
+
+```python
+@action(detail=False, methods=['post'])
+def register(self, request):
+    serializer = UserRegistrationSerializer(data=request.data)
+    if serializer.is_valid():
+        try:
+            user = serializer.save()
+            user.is_active = False
+            user.save()
+
+            code = VerificationCode.objects.create(
+                user=user,
+                code=get_random_string(32),
+                purpose='registration',
+                expires_at=timezone.now() + timezone.timedelta(days=1)
+            )
+
+            verification_url = f"{request.build_absolute_uri('/api/verify-email/')}?code={code.code}"
+            send_mail(
+                'Verify your email',
+                f'Click here to verify your email: {verification_url}',
+                settings.EMAIL_HOST_USER,
+                [user.email],
+                fail_silently=False,
+            )
+
+            return Response({
+                'message': 'Registration successful. Please check your email.'
+            }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            if 'user' in locals():
+                user.delete()
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+```
+
+### 2. Zarządzanie kursami
+
+- **Tworzenie kursów**:
+
+  - Endpoint: `/api/courses/`
+  - Instruktor może dodać technologie oraz moderatorów do kursu.
+
+- **Dodawanie rozdziałów**:
+
+  - Endpoint: `/api/courses/{course_id}/chapters/`
+  - Instruktor lub moderator może dodawać rozdziały do kursu.
+
+#### Przykładowy fragment kodu: Dodawanie rozdziału do kursu
+
+```python
+@action(detail=True, methods=['post'])
+def add_chapter(self, request, pk=None):
+    course = self.get_object()
+    serializer = ChapterSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save(course=course)
+        return Response(serializer.data)
+    return Response(serializer.errors, status=400)
+```
+
+- **Dodawanie stron do rozdziałów**:
+
+  - Obsługa różnych typów stron (treść, quizy, ćwiczenia programistyczne).
+
+- **Recenzje kursów**:
+
+  - Endpoint: `/api/courses/{course_id}/reviews/`
+  - Uczniowie mogą dodawać recenzje do ukończonych kursów.
+
+- **Filtry i wyszukiwanie**:
+
+  - Wyszukiwanie kursów po tytule, technologiach, poziomie trudności, cenie i ocenie.
+
+### 3. Płatności
+
+- **Tworzenie płatności**:
+
+  - Endpoint: `/api/payments/create/{course_id}/`
+  - Użytkownicy mogą płacić za kursy poprzez Stripe.
+
+#### Przykładowy fragment kodu: Tworzenie płatności
+
+```python
+@action(detail=False, methods=['POST'], url_path='create/(?P<course_id>[^/.]+)')
+def create_payment(self, request, course_id=None):
+    stripe.api_key = settings.STRIPE_SK
+    try:
+        course = Course.objects.get(id=course_id)
+        method = request.data.get('method', 'PAYPAL')
+        if Payment.objects.filter(user=request.user, course=course, status='ACCEPTED').exists():
+            return Response({'error': 'Już dokonałeś płatności za ten kurs'}, status=400)
+        if method not in ['PAYPAL','CARD']:
+            return Response({'error': 'Nie obsługujemy tej metody płatności.'}, status=400)
+        id = stripe.PaymentIntent.create(
+            amount=int(course.price * 100),
+            currency='pln',
+            payment_method_types=['card', 'paypal'],
+            metadata={'course_id': course.id, 'user_id': request.user.id}
+        )
+        payment = Payment.objects.create(
+            user=request.user,
+            course=course,
+            price=course.price,
+            stripe_payment_id=id.id,
+            status='PENDING'
+        )
+
+        return Response({
+            'clientSecret': id.client_secret,
+            'publicKey': settings.STRIPE_PK
+        })
+
+    except Course.DoesNotExist:
+        return Response({'error': 'Wystąpił błąd ze znalezieniem kursu.'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)
+```
+
+- **Potwierdzanie płatności**:
+
+  - Endpoint: `/api/payments/confirm/{payment_intent_id}/`
+  - Potwierdzanie płatności i rozdzielenie środków między instruktorem a administratorem.
+
+- **Historia wypłat**:
+
+  - Endpoint: `/api/payout-history/`
+  - Zwracanie historii wypłat instruktora.
+
+---
+
+## Uwagi końcowe
+
+- Aplikacja jest w pełni skalowalna i może być rozwijana o dodatkowe funkcjonalności.
+- W przypadku pytań lub problemów należy skontaktować się z zespołem deweloperskim.
+
+---
 
 Wykonali: Jakub Jankowski, Kamil Konkol , Kacper Miś

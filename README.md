@@ -55,6 +55,8 @@ Aplikacja to kompleksowy system zarządzania kursami online, umożliwiający rej
 
 ## Struktura projektu
 
+![diagram drawio](https://github.com/user-attachments/assets/9ce96764-6ca2-43cb-b1ed-6915dd7aeef0)
+
 ### Główne komponenty aplikacji:
 
 1. **Autoryzacja i uwierzytelnianie**:
@@ -97,8 +99,9 @@ Aplikacja to kompleksowy system zarządzania kursami online, umożliwiający rej
 
 ### 1. Autoryzacja i uwierzytelnianie
 
-- **Rejestracja**:
+   ![Zrzut ekranu 2025-01-14 113447](https://github.com/user-attachments/assets/7a1a0b69-319a-4d1b-828f-c9fbb30c32a2)
 
+- **Rejestracja**:
   - Endpoint: `/api/auth/register/`
   - Walidacja danych użytkownika i wysyłka kodu weryfikacyjnego na e-mail.
 

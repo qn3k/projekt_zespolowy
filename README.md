@@ -20,7 +20,7 @@ Aplikacja to kompleksowy system zarządzania kursami online, umożliwiający rej
 1. Sklonuj repozytorium:
 
    ```bash
-   git clone <adres_repozytorium>
+   git clone <https://github.com/qn3k/projekt_zespolowy>
    ```
 
 2. Zainstaluj wymagane biblioteki:

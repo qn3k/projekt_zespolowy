@@ -155,6 +155,10 @@
                                                    className="btn btn-sm btn-outline-primary me-2">
                                                     Edytuj
                                                 </a>
+                                                <a href={`/courses/${courseId}/chapters/${chapterId}/pages/${page.id}/media/`}
+                                                   className="btn btn-sm btn-outline-info me-2">
+                                                    Edytuj media
+                                                </a>
                                                 <button className="btn btn-sm btn-outline-danger">
                                                     Usuń
                                                 </button>
@@ -174,7 +178,15 @@
                     {showCreatePageModal && (
                         <div className="modal-backdrop fade show"></div>
                     )}
+                <div className="mt-4">
+                    <a 
+                        href={`/courses/${courseId}`}
+                        className="btn btn-secondary"
+                    >
+                        Powrót do kursu
+                    </a>
                 </div>
+            </div>
             );
         };
 

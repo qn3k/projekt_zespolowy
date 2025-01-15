@@ -1,0 +1,507 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'styles.css' %}">
+    <!-- Skrypty React -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#"><img src="{% static 'logo.png' %}" alt="Logo" class="logo"></a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'home' %}">Strona Główna</a>
+                        </li>
+                        {% if user.is_authenticated %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">Profil</a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{% url 'my_courses' %}">Moje kursy</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'profile' %}">Mój profil</a></li>
+                                    <li>                                
+                                        <form method="post" action="{% url 'auth-logout' %}" class="d-inline" id="logout-form">
+                                            {% csrf_token %}
+                                            <button type="submit" class="dropdown-item">Wyloguj</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <span class="nav-link">Witaj, {{ user.username }}!</span>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'login' %}">Logowanie</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'register' %}">Rejestracja</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const MediaManager = () => {
+            const [images, setImages] = React.useState([]);
+            const [videos, setVideos] = React.useState([]);
+            const [loading, setLoading] = React.useState(true);
+            const [error, setError] = React.useState(null);
+            const [editingItem, setEditingItem] = React.useState(null);
+            const [editedCaption, setEditedCaption] = React.useState('');
+            const [draggedItem, setDraggedItem] = React.useState(null);
+            const [message, setMessage] = React.useState({ type: '', text: '' });
+
+            const courseId = "{{ course_id }}";
+            const chapterId = "{{ chapter_id }}";
+            const pageId = "{{ page_id }}";
+
+            const getCSRFToken = () => {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === 'csrftoken') return value;
+                }
+                return '';
+            };
+
+            React.useEffect(() => {
+                fetchMedia();
+            }, []);
+
+            const fetchMedia = async () => {
+                try {
+                    setLoading(true);
+                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/`);
+                    if (!response.ok) throw new Error('Failed to fetch media');
+                    
+                    const data = await response.json();
+                    if (data.content_page) {
+                        setImages(data.content_page.images || []);
+                        setVideos(data.content_page.videos || []);
+                    }
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleImageUpload = async (event) => {
+                const files = Array.from(event.target.files);
+                
+                for (const file of files) {
+                    const formData = new FormData();
+                    formData.append('image', file);
+                    formData.append('caption', file.name);
+                    formData.append('order', images.length + 1);
+
+                    try {
+                        const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/add_content_image/`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRFToken': getCSRFToken(),
+                            },
+                            body: formData
+                        });
+
+                        if (!response.ok) throw new Error('Failed to upload image');
+                        
+                        const newImage = await response.json();
+                        setImages(prev => [...prev, newImage]);
+                        setMessage({ type: 'success', text: 'Zdjęcie zostało dodane pomyślnie' });
+                    } catch (error) {
+                        setMessage({ type: 'error', text: error.message });
+                    }
+                }
+            };
+
+            const handleVideoAdd = async () => {
+                const videoUrl = prompt('Wprowadź URL filmu:');
+                if (!videoUrl) return;
+
+                try {
+                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/add_content_video/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken(),
+                        },
+                        body: JSON.stringify({
+                            video_url: videoUrl,
+                            caption: 'Nowy film',
+                            order: videos.length + 1
+                        })
+                    });
+
+                    if (!response.ok) throw new Error('Failed to add video');
+                    
+                    const newVideo = await response.json();
+                    setVideos(prev => [...prev, newVideo]);
+                    setMessage({ type: 'success', text: 'Film został dodany pomyślnie' });
+                } catch (error) {
+                    setMessage({ type: 'error', text: error.message });
+                }
+            };
+
+            const handleDelete = async (id, type) => {
+                if (!confirm('Czy na pewno chcesz usunąć to medium?')) return;
+
+                const endpoint = type === 'image' ? 'content_images' : 'content_videos';
+                try {
+                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/${endpoint}/${id}/`, {
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRFToken': getCSRFToken(),
+                        }
+                    });
+
+                    if (!response.ok) throw new Error(`Failed to delete ${type}`);
+
+                    if (type === 'image') {
+                        setImages(prev => prev.filter(img => img.id !== id));
+                    } else {
+                        setVideos(prev => prev.filter(vid => vid.id !== id));
+                    }
+                    setMessage({ type: 'success', text: 'Medium zostało usunięte' });
+                } catch (error) {
+                    setMessage({ type: 'error', text: error.message });
+                }
+            };
+
+            const handleCaptionUpdate = async (id, type) => {
+                const endpoint = type === 'image' ? 'content_images' : 'content_videos';
+                try {
+                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/${endpoint}/${id}/`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken(),
+                        },
+                        body: JSON.stringify({ caption: editedCaption })
+                    });
+
+                    if (!response.ok) throw new Error('Failed to update caption');
+
+                    if (type === 'image') {
+                        setImages(prev => prev.map(img => 
+                            img.id === id ? { ...img, caption: editedCaption } : img
+                        ));
+                    } else {
+                        setVideos(prev => prev.map(vid => 
+                            vid.id === id ? { ...vid, caption: editedCaption } : vid
+                        ));
+                    }
+                    setEditingItem(null);
+                    setMessage({ type: 'success', text: 'Podpis został zaktualizowany' });
+                } catch (error) {
+                    setMessage({ type: 'error', text: error.message });
+                }
+            };
+
+            const handleDragStart = (item, type) => {
+                setDraggedItem({ ...item, type });
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+            };
+
+            const handleDrop = async (targetItem, type) => {
+                e.preventDefault();
+                if (!draggedItem || draggedItem.id === targetItem.id) return;
+
+                const items = type === 'image' ? images : videos;
+                const setItems = type === 'image' ? setImages : setVideos;
+                const endpoint = type === 'image' ? 'content_images' : 'content_videos';
+
+                // Swap orders
+                const newOrder = targetItem.order;
+                const oldOrder = draggedItem.order;
+
+                try {
+                    // Update dragged item order
+                    await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/${endpoint}/${draggedItem.id}/`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken(),
+                        },
+                        body: JSON.stringify({ order: newOrder })
+                    });
+
+                    // Update target item order
+                    await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/${endpoint}/${targetItem.id}/`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken(),
+                        },
+                        body: JSON.stringify({ order: oldOrder })
+                    });
+
+                    // Update state
+                    const updatedItems = items.map(item => {
+                        if (item.id === draggedItem.id) return { ...item, order: newOrder };
+                        if (item.id === targetItem.id) return { ...item, order: oldOrder };
+                        return item;
+                    });
+
+                    setItems(updatedItems.sort((a, b) => a.order - b.order));
+                    setMessage({ type: 'success', text: 'Kolejność została zaktualizowana' });
+                } catch (error) {
+                    setMessage({ type: 'error', text: error.message });
+                }
+
+                setDraggedItem(null);
+            };
+
+            if (loading) {
+                return (
+                    <div className="container mt-5">
+                        <div className="d-flex justify-content-center">
+                            <div className="spinner-border" role="status">
+                                <span className="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (error) {
+                return (
+                    <div className="container mt-5">
+                        <div className="alert alert-danger" role="alert">
+                            {error}
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="container my-5">
+                    <h2 className="mb-4">Zarządzanie mediami</h2>
+                    
+                    {message.text && (
+                        <div className={`alert ${message.type === 'error' ? 'alert-danger' : 'alert-success'} mb-4`}>
+                            {message.text}
+                        </div>
+                    )}
+
+                    <div className="row mb-4">
+                        <div className="col-md-6">
+                            <div className="card">
+                                <div className="card-body">
+                                    <h5 className="card-title mb-3">Dodaj zdjęcia</h5>
+                                    <input
+                                        type="file"
+                                        onChange={handleImageUpload}
+                                        multiple
+                                        accept="image/*"
+                                        className="form-control"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="col-md-6">
+                            <div className="card">
+                                <div className="card-body">
+                                    <h5 className="card-title mb-3">Dodaj film</h5>
+                                    <button
+                                        onClick={handleVideoAdd}
+                                        className="btn btn-primary w-100"
+                                    >
+                                        Dodaj link do filmu
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Images Section */}
+                    <div className="mb-5">
+                        <h3>Zdjęcia ({images.length})</h3>
+                        <div className="row">
+                            {images.map(image => (
+                                <div 
+                                    key={image.id}
+                                    className="col-md-4 mb-4"
+                                    draggable
+                                    onDragStart={() => handleDragStart(image, 'image')}
+                                    onDragOver={handleDragOver}
+                                    onDrop={() => handleDrop(image, 'image')}
+                                >
+                                    <div className="card h-100">
+                                        <img 
+                                            src={image.image}
+                                            alt={image.caption}
+                                            className="card-img-top card-img-custom"
+                                        />
+                                        </div>
+                                        <div className="card-body">
+                                            {editingItem?.id === image.id && editingItem?.type === 'image' ? (
+                                                <div className="d-flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        value={editedCaption}
+                                                        onChange={(e) => setEditedCaption(e.target.value)}
+                                                    />
+                                                    <button
+                                                        className="btn btn-sm btn-success"
+                                                        onClick={() => handleCaptionUpdate(image.id, 'image')}
+                                                    >
+                                                        ✓
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-sm btn-secondary"
+                                                        onClick={() => setEditingItem(null)}
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="d-flex justify-content-between align-items-center">
+                                                    <p className="card-text mb-0">{image.caption}</p>
+                                                    <div className="btn-group">
+                                                        <button
+                                                            className="btn btn-sm btn-outline-primary"
+                                                            onClick={() => {
+                                                                setEditingItem({ id: image.id, type: 'image' });
+                                                                setEditedCaption(image.caption);
+                                                            }}
+                                                        >
+                                                            ✎
+                                                        </button>
+                                                        <button
+                                                            className="btn btn-sm btn-outline-danger"
+                                                            onClick={() => handleDelete(image.id, 'image')}
+                                                        >
+                                                            🗑
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <small className="text-muted">Kolejność: {image.order}</small>
+                                        </div>
+                                    </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Videos Section */}
+                    <div>
+                        <h3>Filmy ({videos.length})</h3>
+                        <div className="row">
+                            {videos.map(video => (
+                                <div 
+                                    key={video.id}
+                                    className="col-md-4 mb-4"
+                                    draggable
+                                    onDragStart={() => handleDragStart(video, 'video')}
+                                    onDragOver={handleDragOver}
+                                    onDrop={() => handleDrop(video, 'video')}
+                                >
+                                    <div className="card h-100">
+                                        <div className="card-img-top card-img-custom">
+                                            <iframe
+                                                src={video.video_url}
+                                                title={video.caption}
+                                                width="100%"
+                                                height="100%"
+                                                frameBorder="0"
+                                                allowFullScreen
+                                            />
+                                        </div>
+                                        <div className="card-body">
+                                            {editingItem?.id === video.id && editingItem?.type === 'video' ? (
+                                                <div className="d-flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        value={editedCaption}
+                                                        onChange={(e) => setEditedCaption(e.target.value)}
+                                                    />
+                                                    <button
+                                                        className="btn btn-sm btn-success"
+                                                        onClick={() => handleCaptionUpdate(video.id, 'video')}
+                                                    >
+                                                        ✓
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-sm btn-secondary"
+                                                        onClick={() => setEditingItem(null)}
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="d-flex justify-content-between align-items-center">
+                                                    <p className="card-text mb-0">{video.caption}</p>
+                                                    <div className="btn-group">
+                                                        <button
+                                                            className="btn btn-sm btn-outline-primary"
+                                                            onClick={() => {
+                                                                setEditingItem({ id: video.id, type: 'video' });
+                                                                setEditedCaption(video.caption);
+                                                            }}
+                                                        >
+                                                            ✎
+                                                        </button>
+                                                        <button
+                                                            className="btn btn-sm btn-outline-danger"
+                                                            onClick={() => handleDelete(video.id, 'video')}
+                                                        >
+                                                            🗑
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <small className="text-muted">Kolejność: {video.order}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="mt-4">
+                        <a 
+                            href={`/courses/${courseId}/chapters/${chapterId}`}
+                            className="btn btn-secondary"
+                        >
+                            Powrót do działu
+                        </a>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<MediaManager />);
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

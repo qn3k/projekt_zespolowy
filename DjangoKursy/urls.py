@@ -23,7 +23,7 @@ from rest_framework.routers import DefaultRouter
 from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view, PayoutHistoryView, register_view, activate_view,\
     CourseViewSet, ChapterViewSet, PageViewSet, password_reset_request_view, password_reset_confirm_view,create_course,technology_management_view, \
     PaymentViewSet, TechnologyViewSet, course_detail_view, create_chapter_view, profile_view, get_balance, get_available_moderators,    \
-    my_courses_view, chapter_detail_view 
+    my_courses_view, chapter_detail_view, create_chapter_page, manage_media_view, edit_chapter_page_view
 
 
 router = DefaultRouter()
@@ -63,6 +63,9 @@ urlpatterns = [
     path('courses/add-chapter/', create_chapter_view, name='create_chapter'),
     path('courses/<int:course_id>/add-chapter/', create_chapter_view, name='create_chapter_with_id'),
     path('courses/<int:course_id>/chapters/<int:chapter_id>/', chapter_detail_view, name='chapter_detail'),
+    path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/create/content', create_chapter_page, name='create_chapter_page'),
+    path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/<int:page_id>/media/', manage_media_view, name='manage_media'),
+    path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/<int:page_id>/edit/', edit_chapter_page_view, name='edit_chapter_page'),
     path('profile/', profile_view, name='profile'),
     path('my-courses/', my_courses_view, name='my_courses'),
     path('api/auth/balance/', get_balance, name='get-balance'),

@@ -1251,6 +1251,36 @@ def my_courses_view(request):
     return render(request, 'my_courses.html')
 
 @login_required
+def create_chapter_page(request, course_id, chapter_id):
+    try:
+        chapter = Chapter.objects.select_related('course').prefetch_related('pages').get(
+            id=chapter_id, 
+            course_id=course_id
+        )
+        
+        course = chapter.course
+        has_access = (
+            course.instructor == request.user or 
+            request.user in course.moderators.all() or
+            Payment.objects.filter(
+                user=request.user, 
+                course=course, 
+                status='ACCEPTED'
+            ).exists()
+        )
+        
+        if not has_access:
+            return HttpResponseForbidden("Nie masz dostępu do tego rozdziału")
+            
+        return render(request, 'create_chapter_page.html', {
+            'course_id': course_id,
+            'chapter_id': chapter_id
+        })
+        
+    except Chapter.DoesNotExist:
+        raise Http404("Rozdział nie istnieje")
+
+@login_required
 def chapter_detail_view(request, course_id, chapter_id):
     try:
         chapter = Chapter.objects.select_related('course').prefetch_related('pages').get(
@@ -1279,3 +1309,58 @@ def chapter_detail_view(request, course_id, chapter_id):
         
     except Chapter.DoesNotExist:
         raise Http404("Rozdział nie istnieje")
+    
+@login_required
+def edit_chapter_page_view(request, course_id, chapter_id, page_id):
+    try:
+        page = Page.objects.get(
+            id=page_id,
+            chapter_id=chapter_id,
+            chapter__course_id=course_id
+        )
+        course = page.chapter.course
+        
+        if not (course.instructor == request.user or request.user in course.moderators.all()):
+            messages.error(request, 'Nie masz uprawnień do edycji tej strony.')
+            return redirect('course_detail', course_id=course_id)
+            
+        if page.type != 'CONTENT':
+            messages.error(request, 'Ta strona nie jest stroną z treścią.')
+            return redirect('course_detail', course_id=course_id)
+            
+        return render(request, 'edit_chapter_page.html')
+        
+    except Page.DoesNotExist:
+        messages.error(request, 'Strona nie została znaleziona.')
+        return redirect('course_detail', course_id=course_id)
+
+@login_required
+def manage_media_view(request, course_id, chapter_id, page_id):
+    try:
+        page = Page.objects.select_related(
+            'chapter', 
+            'chapter__course',
+            'contentpage'  
+        ).get(
+            id=page_id,
+            chapter_id=chapter_id,
+            chapter__course_id=course_id
+        )
+    except Page.DoesNotExist:
+        return redirect('home')
+
+    course = page.chapter.course
+    if not (course.instructor == request.user or request.user in course.moderators.all()):
+        return redirect('home')
+
+    if page.type != 'CONTENT':
+        return redirect('home')
+
+    context = {
+        'title': f'Zarządzanie mediami - {page.title}',
+        'course_id': course_id,
+        'chapter_id': chapter_id,
+        'page_id': page_id,
+    }
+    
+    return render(request, 'manage_media.html', context)

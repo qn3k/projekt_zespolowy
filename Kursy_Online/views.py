@@ -26,7 +26,7 @@ from django.db import models, transaction
 from .code_execution import CodeExecutionService
 from .utils import distribute_balance
 from .models import User, VerificationCode, LoginHistory, PayoutHistory, Course, Chapter, Page, UserProgress, ContentPage, \
-    CodingExercise, CourseReview, Payment, Technology
+    CodingExercise, CourseReview, Payment, Technology, ContentImage, ContentVideo
 from .serializers import UserRegistrationSerializer, PayoutHistorySerializer, UserSerializer, CourseSerializer, ChapterSerializer, \
     PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, \
      TestCaseSerializer,ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
@@ -1364,3 +1364,42 @@ def manage_media_view(request, course_id, chapter_id, page_id):
     }
     
     return render(request, 'manage_media.html', context)
+
+def page_detail_view(request, course_id, chapter_id, page_id):
+    return render(request, 'page_detail.html')
+
+class ContentImageViewSet(viewsets.ModelViewSet):
+    serializer_class = ContentImageSerializer
+    
+    def get_queryset(self):
+        return ContentImage.objects.filter(content_page=self.kwargs['page_pk'])
+        
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+        
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+class ContentVideoViewSet(viewsets.ModelViewSet):
+    serializer_class = ContentVideoSerializer
+    
+    def get_queryset(self):
+        return ContentVideo.objects.filter(content_page=self.kwargs['page_pk'])
+        
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+        
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)

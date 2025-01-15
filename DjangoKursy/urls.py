@@ -23,7 +23,7 @@ from rest_framework.routers import DefaultRouter
 from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view, PayoutHistoryView, register_view, activate_view,\
     CourseViewSet, ChapterViewSet, PageViewSet, password_reset_request_view, password_reset_confirm_view,create_course,technology_management_view, \
     PaymentViewSet, TechnologyViewSet, course_detail_view, create_chapter_view, profile_view, get_balance, get_available_moderators,    \
-    my_courses_view, chapter_detail_view, create_chapter_page, manage_media_view, edit_chapter_page_view
+    my_courses_view, chapter_detail_view, create_chapter_page, manage_media_view, edit_chapter_page_view, page_detail_view, ContentImageViewSet, ContentVideoViewSet
 
 
 router = DefaultRouter()
@@ -33,9 +33,12 @@ router.register(r'payments', PaymentViewSet, basename='payments')
 router.register(r'technologies', TechnologyViewSet, basename='technology')
 courses_router = routers.NestedDefaultRouter(router, r'courses', lookup='course')
 courses_router.register(r'chapters', ChapterViewSet, basename='course-chapters')
-
 chapters_router = routers.NestedDefaultRouter(courses_router, r'chapters', lookup='chapter')
 chapters_router.register(r'pages', PageViewSet, basename='chapter-pages')
+pages_router = routers.NestedDefaultRouter(chapters_router, r'pages', lookup='page')
+pages_router.register(r'content_images', ContentImageViewSet, basename='page-images')
+pages_router.register(r'content_videos', ContentVideoViewSet, basename='page-videos')
+
 
 PageViewSet.extra_actions = [
     {'url_path': 'add_quiz_question', 'url_name': 'add-quiz-question'},
@@ -51,6 +54,7 @@ urlpatterns = [
     path('api/', include(courses_router.urls)),
     path('api/', include(chapters_router.urls)),
     path('api/', include(router.urls)),
+    path('api/', include(pages_router.urls)),
     path('api/users/', get_available_moderators, name='available-moderators'),
     path('login/', login_view, name='login'),
     path('logout/', AuthViewSet.as_view({'post': 'logout'}), name='auth-logout'),
@@ -66,6 +70,7 @@ urlpatterns = [
     path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/create/content', create_chapter_page, name='create_chapter_page'),
     path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/<int:page_id>/media/', manage_media_view, name='manage_media'),
     path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/<int:page_id>/edit/', edit_chapter_page_view, name='edit_chapter_page'),
+    path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/<int:page_id>/', page_detail_view, name='page_detail'),
     path('profile/', profile_view, name='profile'),
     path('my-courses/', my_courses_view, name='my_courses'),
     path('api/auth/balance/', get_balance, name='get-balance'),

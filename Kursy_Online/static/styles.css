@@ -84,3 +84,13 @@ main {
     height: 200px;
     object-fit: cover;
 }
+
+.img-custom-layout {
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.img-custon-layout2{
+    background: 'transparent'; 
+    border: 'none'; 
+    box-Shadow: 'none'; 
+}

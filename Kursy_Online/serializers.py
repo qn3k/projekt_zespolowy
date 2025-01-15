@@ -84,8 +84,7 @@ class ContentPageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ContentPage
-        fields = ['page', 'content', 'images', 'videos']
-        read_only_fields = ['page']
+        fields = ['content', 'images', 'videos']
 
 class QuizAnswerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -189,17 +188,28 @@ class PageSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
     def to_representation(self, instance):
-
         representation = super().to_representation(instance)
-
-        if instance.type == 'CODING':
+        if instance.type == 'CONTENT':
             try:
-                coding_exercise = instance.codingexercise
-                representation['coding_exercise'] = CodingExerciseSerializer(coding_exercise).data
-            except CodingExercise.DoesNotExist:
-                representation['coding_exercise'] = None
-
+                content_page = instance.contentpage
+                representation['content_page'] = ContentPageSerializer(content_page).data
+            except ContentPage.DoesNotExist:
+                representation['content_page'] = None
         return representation
+    
+    def get_content_page(self, obj):
+        if obj.type == 'CONTENT':
+            try:
+                content_page = obj.contentpage
+                return {
+                    'content': content_page.content,
+                    'images': ContentImageSerializer(content_page.images.all(), many=True).data,
+                    'videos': ContentVideoSerializer(content_page.videos.all(), many=True).data
+                }
+            except ContentPage.DoesNotExist:
+                return None
+        return None
+    
 class ChapterSerializer(serializers.ModelSerializer):
     pages = PageSerializer(many=True, required=False)
 

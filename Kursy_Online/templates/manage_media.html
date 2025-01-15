@@ -7,11 +7,9 @@
     <title>{{ title }}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="{% static 'styles.css' %}">
-    <!-- Skrypty React -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
@@ -96,11 +94,17 @@
                     if (!response.ok) throw new Error('Failed to fetch media');
                     
                     const data = await response.json();
+                    console.log('Received data:', data); 
+
                     if (data.content_page) {
+                        console.log('Content page data:', data.content_page); 
                         setImages(data.content_page.images || []);
                         setVideos(data.content_page.videos || []);
+                    } else {
+                        console.log('No content_page found in response'); 
                     }
                 } catch (err) {
+                    console.error('Error fetching media:', err); 
                     setError(err.message);
                 } finally {
                     setLoading(false);
@@ -176,16 +180,19 @@
                         }
                     });
 
-                    if (!response.ok) throw new Error(`Failed to delete ${type}`);
+                    if (!response.ok) {
+                        throw new Error('Nie udało się usunąć medium');
+                    }
 
                     if (type === 'image') {
                         setImages(prev => prev.filter(img => img.id !== id));
                     } else {
                         setVideos(prev => prev.filter(vid => vid.id !== id));
                     }
-                    setMessage({ type: 'success', text: 'Medium zostało usunięte' });
+                    setMessage({ type: 'success', text: 'Medium zostało usunięte pomyślnie' });
                 } catch (error) {
                     setMessage({ type: 'error', text: error.message });
+                    console.error('Error deleting media:', error);
                 }
             };
 
@@ -201,7 +208,12 @@
                         body: JSON.stringify({ caption: editedCaption })
                     });
 
-                    if (!response.ok) throw new Error('Failed to update caption');
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Nie udało się zaktualizować podpisu');
+                    }
+
+                    const updatedItem = await response.json();
 
                     if (type === 'image') {
                         setImages(prev => prev.map(img => 
@@ -213,9 +225,10 @@
                         ));
                     }
                     setEditingItem(null);
-                    setMessage({ type: 'success', text: 'Podpis został zaktualizowany' });
+                    setMessage({ type: 'success', text: 'Podpis został zaktualizowany pomyślnie' });
                 } catch (error) {
                     setMessage({ type: 'error', text: error.message });
+                    console.error('Error updating caption:', error);
                 }
             };
 

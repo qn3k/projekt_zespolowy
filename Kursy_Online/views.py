@@ -26,7 +26,7 @@ from django.db import models, transaction
 from .code_execution import CodeExecutionService
 from .utils import distribute_balance
 from .models import User, VerificationCode, LoginHistory, PayoutHistory, Course, Chapter, Page, UserProgress, ContentPage, \
-    CodingExercise, CourseReview, Payment, Technology, ContentImage, ContentVideo
+    CodingExercise, CourseReview, Payment, Technology, ContentImage, ContentVideo, Quiz, QuizAnswer, QuizQuestion 
 from .serializers import UserRegistrationSerializer, PayoutHistorySerializer, UserSerializer, CourseSerializer, ChapterSerializer, \
     PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, \
      TestCaseSerializer,ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
@@ -1403,3 +1403,56 @@ class ContentVideoViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
+    
+def quiz_page_detail_view(request, course_id, chapter_id, page_id):
+    return render(request, 'quiz.html', {
+        'title': 'Quiz',
+        'course_id': course_id,
+        'chapter_id': chapter_id,
+        'page_id': page_id
+    })    
+
+def create_quiz_view(request, course_id, chapter_id):
+    return render(request, 'create_quiz.html', {
+        'title': 'Tworzenie quizu',
+        'course_id': course_id,
+        'chapter_id': chapter_id
+    })
+
+class QuizViewSet(viewsets.ModelViewSet):
+    serializer_class = QuizSerializer
+
+    def perform_create(self, serializer):
+        chapter = Chapter.objects.get(id=self.kwargs.get('chapter_pk'))
+        quiz_data = self.request.data.get('quiz', {})
+        questions_data = quiz_data.pop('questions', [])
+        
+        page = serializer.save(
+            chapter=chapter,
+            type='QUIZ'
+        )
+        
+        quiz = Quiz.objects.create(
+            page=page,
+            description=quiz_data.get('description', '')
+        )
+        for question_order, question_data in enumerate(questions_data, 1):
+            question = QuizQuestion.objects.create(
+                quiz=quiz,
+                question=question_data['question'],
+                order=question_order
+            )
+            answers_data = question_data.get('answers', [])
+            for answer_data in answers_data:
+                QuizAnswer.objects.create(
+                    question=question,
+                    answer=answer_data['answer'],
+                    is_correct=answer_data['is_correct']
+                )
+        
+        return page
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), IsInstructor()]
+        return [IsAuthenticated()]

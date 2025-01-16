@@ -86,41 +86,30 @@ class ContentPageSerializer(serializers.ModelSerializer):
         model = ContentPage
         fields = ['content', 'images', 'videos']
 
-class QuizAnswerSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = QuizAnswer
-        fields = ['id', 'question', 'answer', 'is_correct']
-        read_only_fields = ['question']
-
-class QuizQuestionSerializer(serializers.ModelSerializer):
-    answers = QuizAnswerSerializer(many=True)
-
-    class Meta:
-        model = QuizQuestion
-        fields = ['id', 'quiz', 'question', 'order', 'answers']
-        read_only_fields = ['quiz']
-
-    def create(self, validated_data):
-        answers_data = validated_data.pop('answers')
-        question = QuizQuestion.objects.create(**validated_data)
-
-        for answer_data in answers_data:
-            QuizAnswer.objects.create(question=question, **answer_data)
-
-        return question
-
 class PayoutHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = PayoutHistory
         fields = ['id', 'amount', 'created_at', 'description']
+
+class QuizAnswerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuizAnswer
+        fields = ['id', 'answer', 'is_correct']
+
+class QuizQuestionSerializer(serializers.ModelSerializer):
+    answers = QuizAnswerSerializer(many=True, required=False)
+
+    class Meta:
+        model = QuizQuestion
+        fields = ['id', 'question', 'order', 'answers']
 
 class QuizSerializer(serializers.ModelSerializer):
     questions = QuizQuestionSerializer(many=True, required=False)
 
     class Meta:
         model = Quiz
-        fields = ['page', 'description', 'questions']
-        read_only_fields = ['page']
+        fields = ['description', 'questions']
+
 class TestCaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = TestCase
@@ -146,37 +135,29 @@ class CodingExerciseSerializer(serializers.ModelSerializer):
         return coding_exercise
 
 class PageSerializer(serializers.ModelSerializer):
-    content_page = ContentPageSerializer(required=False)
     quiz = QuizSerializer(required=False)
-    coding_exercise = CodingExerciseSerializer(required=False)
 
     class Meta:
         model = Page
-        fields = ['id', 'title', 'type', 'order', 'content_page', 'quiz', 'coding_exercise']
-        read_only_fields = ['order']
+        fields = ['id', 'title', 'type', 'order', 'quiz']
 
     def create(self, validated_data):
-        content_page_data = validated_data.pop('content_page', None)
-        quiz_data = validated_data.pop('quiz', None)
-        coding_exercise_data = validated_data.pop('coding_exercise', None)
-
-        page = Page.objects.create(**validated_data)
-
-        if page.type == 'CONTENT':
-            ContentPage.objects.create(
-                page=page,
-                content=content_page_data.get('content', '') if content_page_data else ''
-            )
-
-        if quiz_data and page.type == 'QUIZ':
-            Quiz.objects.create(page=page, **quiz_data)
-        if coding_exercise_data and page.type == 'CODING':
-            test_cases_data = coding_exercise_data.pop('test_cases', [])
-            exercise = CodingExercise.objects.create(page=page, **coding_exercise_data)
-            for test_case in test_cases_data:
-                TestCase.objects.create(exercise=exercise, **test_case)
-
-        return page
+        if validated_data.get('type') == 'QUIZ':
+            quiz_data = validated_data.pop('quiz', {})
+            questions_data = quiz_data.pop('questions', [])
+            page = Page.objects.create(**validated_data)
+            
+            quiz = Quiz.objects.create(page=page, **quiz_data)
+            
+            for question_data in questions_data:
+                answers_data = question_data.pop('answers', [])
+                question = QuizQuestion.objects.create(quiz=quiz, **question_data)
+                
+                for answer_data in answers_data:
+                    QuizAnswer.objects.create(question=question, **answer_data)
+            
+            return page
+        return super().create(validated_data)
 
     def update(self, instance, validated_data):
         if instance.type == 'CONTENT':

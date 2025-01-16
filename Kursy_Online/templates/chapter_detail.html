@@ -64,6 +64,9 @@
             const [loading, setLoading] = React.useState(true);
             const [error, setError] = React.useState(null);
             const [showCreatePageModal, setShowCreatePageModal] = React.useState(false);
+            const [isEditingTitle, setIsEditingTitle] = React.useState(false);
+            const [editedTitle, setEditedTitle] = React.useState('');
+            const [editError, setEditError] = React.useState(null);
             const courseId = window.location.pathname.split('/')[2];
             const chapterId = window.location.pathname.split('/')[4];
 
@@ -77,10 +80,76 @@
                     if (!response.ok) throw new Error('Failed to fetch chapter');
                     const data = await response.json();
                     setChapter(data);
+                    setEditedTitle(data.title);
                 } catch (err) {
                     setError(err.message);
                 } finally {
                     setLoading(false);
+                }
+            };
+
+            const handleTitleUpdate = async () => {
+                try {
+                    setEditError(null);
+                    if (!editedTitle.trim()) {
+                        setEditError('Tytuł nie może być pusty');
+                        return;
+                    }
+
+                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': document.cookie.split('csrftoken=')[1]?.split(';')[0]
+                        },
+                        body: JSON.stringify({ title: editedTitle })
+                    });
+
+                    if (!response.ok) throw new Error('Nie udało się zaktualizować tytułu');
+
+                    const updatedChapter = await response.json();
+                    setChapter(updatedChapter);
+                    setIsEditingTitle(false);
+                } catch (err) {
+                    setEditError(err.message);
+                }
+            };
+
+            const getPageLink = (page) => {
+                const baseUrl = `/courses/${courseId}/chapters/${chapterId}/pages/${page.id}`;
+                switch (page.type) {
+                    case 'QUIZ':
+                        return `${baseUrl}/quiz`;
+                    case 'CODING':
+                        return `${baseUrl}/coding`;
+                    default:
+                        return baseUrl;
+                }
+            };
+
+            const getPageTypeLabel = (type) => {
+                switch (type) {
+                    case 'CONTENT':
+                        return 'Strona z treścią';
+                    case 'QUIZ':
+                        return 'Quiz';
+                    case 'CODING':
+                        return 'Zadanie programistyczne';
+                    default:
+                        return 'Nieznany typ';
+                }
+            };
+
+            const getPageIcon = (type) => {
+                switch (type) {
+                    case 'CONTENT':
+                        return '📄';
+                    case 'QUIZ':
+                        return '❓';
+                    case 'CODING':
+                        return '💻';
+                    default:
+                        return '📎';
                 }
             };
 
@@ -96,18 +165,18 @@
                                 <h6 className="mb-4">Wybierz typ strony:</h6>
                                 <div className="d-grid gap-3">
                                     <a href={`/courses/${courseId}/chapters/${chapterId}/pages/create/content`} 
-                                       className="btn btn-outline-primary">
-                                        <i className="bi bi-file-text me-2"></i>
+                                    className="btn btn-outline-primary">
+                                        <span className="me-2">📄</span>
                                         Strona z treścią
                                     </a>
                                     <a href={`/courses/${courseId}/chapters/${chapterId}/pages/create/quiz`} 
-                                       className="btn btn-outline-primary">
-                                        <i className="bi bi-question-circle me-2"></i>
+                                    className="btn btn-outline-primary">
+                                        <span className="me-2">❓</span>
                                         Quiz
                                     </a>
                                     <a href={`/courses/${courseId}/chapters/${chapterId}/pages/create/coding`} 
-                                       className="btn btn-outline-primary">
-                                        <i className="bi bi-code-slash me-2"></i>
+                                    className="btn btn-outline-primary">
+                                        <span className="me-2">💻</span>
                                         Zadanie programistyczne
                                     </a>
                                 </div>
@@ -126,43 +195,88 @@
                     <div className="row">
                         <div className="col-12">
                             <div className="d-flex justify-content-between align-items-center mb-4">
-                                <h2>{chapter.title}</h2>
+                                <div className="d-flex align-items-center">
+                                    {isEditingTitle ? (
+                                        <div className="input-group me-2">
+                                            <input
+                                                type="text"
+                                                className={`form-control ${editError ? 'is-invalid' : ''}`}
+                                                value={editedTitle}
+                                                onChange={(e) => setEditedTitle(e.target.value)}
+                                                onKeyPress={(e) => e.key === 'Enter' && handleTitleUpdate()}
+                                            />
+                                            <button 
+                                                className="btn btn-success" 
+                                                onClick={handleTitleUpdate}
+                                            >
+                                                Zapisz
+                                            </button>
+                                            <button 
+                                                className="btn btn-secondary" 
+                                                onClick={() => {
+                                                    setIsEditingTitle(false);
+                                                    setEditedTitle(chapter.title);
+                                                    setEditError(null);
+                                                }}
+                                            >
+                                                Anuluj
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <h2 className="mb-0 me-3">{chapter.title}</h2>
+                                            <button 
+                                                className="btn btn-outline-secondary btn-sm"
+                                                onClick={() => setIsEditingTitle(true)}
+                                            >
+                                                ✎ Edytuj nazwę
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                                 <button 
                                     className="btn btn-primary"
-                                    onClick={() => setShowCreatePageModal(true)}>
+                                    onClick={() => setShowCreatePageModal(true)}
+                                >
                                     Dodaj stronę
                                 </button>
                             </div>
+                            
+                            {editError && (
+                                <div className="alert alert-danger mb-4">
+                                    {editError}
+                                </div>
+                            )}
 
                             {chapter.pages?.length > 0 ? (
                                 <div className="list-group">
                                     {chapter.pages.map(page => (
                                         <div key={page.id} 
-                                             className="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                            className="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                                             <div>
-                                                <h5 className="mb-1">{page.title}</h5>
+                                                <h5 className="mb-1">
+                                                    <span className="me-2">{getPageIcon(page.type)}</span>
+                                                    {page.title}
+                                                </h5>
                                                 <small className="text-muted">
-                                                    Typ: {
-                                                        page.type === 'CONTENT' ? 'Strona z treścią' :
-                                                        page.type === 'QUIZ' ? 'Quiz' :
-                                                        page.type === 'CODING' ? 'Zadanie programistyczne' :
-                                                        'Nieznany'
-                                                    }
+                                                    Typ: {getPageTypeLabel(page.type)}
                                                 </small>
                                             </div>
                                             <div>
-                                                <a href={`/courses/${courseId}/chapters/${chapterId}/pages/${page.id}`}
-                                                   className="btn btn-sm btn-outline-primary me-2">
+                                                <a href={getPageLink(page)}
+                                                className="btn btn-sm btn-outline-primary me-2">
                                                     Zobacz
                                                 </a>
                                                 <a href={`/courses/${courseId}/chapters/${chapterId}/pages/${page.id}/edit`}
-                                                   className="btn btn-sm btn-outline-secondary me-2">
+                                                className="btn btn-sm btn-outline-secondary me-2">
                                                     Edytuj
                                                 </a>
-                                                <a href={`/courses/${courseId}/chapters/${chapterId}/pages/${page.id}/media/`}
-                                                   className="btn btn-sm btn-outline-info me-2">
-                                                    Edytuj media
-                                                </a>
+                                                {page.type === 'CONTENT' && (
+                                                    <a href={`/courses/${courseId}/chapters/${chapterId}/pages/${page.id}/media/`}
+                                                    className="btn btn-sm btn-outline-info me-2">
+                                                        Edytuj media
+                                                    </a>
+                                                )}
                                                 <button className="btn btn-sm btn-outline-danger">
                                                     Usuń
                                                 </button>
@@ -179,20 +293,17 @@
                     </div>
 
                     <CreatePageModal />
-                    {showCreatePageModal && (
-                        <div className="modal-backdrop fade show"></div>
-                    )}
-                <div className="mt-4">
-                    <a 
-                        href={`/courses/${courseId}`}
-                        className="btn btn-secondary"
-                    >
-                        Powrót do kursu
-                    </a>
+                    {showCreatePageModal && <div className="modal-backdrop fade show"></div>}
+                    
+                    <div className="mt-4">
+                        <a href={`/courses/${courseId}`} className="btn btn-secondary">
+                            Powrót do kursu
+                        </a>
+                    </div>
                 </div>
-            </div>
             );
         };
+
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<ChapterDetail />);

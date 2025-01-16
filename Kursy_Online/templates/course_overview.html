@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Szczegóły kursu</title>
+    <title>Przegląd kursu</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="{% static 'styles.css' %}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
@@ -66,33 +66,20 @@
             currentUsername: "{{ user.username }}"
         };
 
-        const CourseDetail = ({isAuthenticated, csrfToken, currentUsername }) => {
+        const CourseOverview = ({isAuthenticated, csrfToken, currentUsername }) => {
             const [course, setCourse] = React.useState(null);
             const [loading, setLoading] = React.useState(true);
             const [error, setError] = React.useState(null);
-            const [hasModeratorAccess, setHasModeratorAccess] = React.useState(false);
 
             const courseId = "{{ course_id }}";
 
             React.useEffect(() => {
-                const checkAccess = async () => {
+                const fetchCourse = async () => {
                     try {
                         const response = await fetch(`/api/courses/${courseId}/`);
                         if (!response.ok) throw new Error('Failed to fetch course');
                         const data = await response.json();
                         setCourse(data);
-                        
-                        if (isAuthenticated) {
-                            // Check if user is instructor
-                            const isInstructor = data.instructor?.username === currentUsername;
-                            
-                            // Check if user is in moderators array
-                            const isModerator = data.moderators?.some(
-                                mod => mod.username === currentUsername
-                            );
-                            
-                            setHasModeratorAccess(isInstructor || isModerator);
-                        }
                     } catch (err) {
                         setError(err.message);
                     } finally {
@@ -100,8 +87,8 @@
                     }
                 };
 
-                checkAccess();
-            }, [courseId, currentUsername, isAuthenticated]);
+                fetchCourse();
+            }, [courseId]);
 
             if (loading) return <div className="container mt-5"><div className="alert alert-info">Loading...</div></div>;
             if (error) return <div className="container mt-5"><div className="alert alert-danger">Error: {error}</div></div>;
@@ -135,55 +122,38 @@
                             )}
 
                             <div className="mt-4">
-                                <div className="d-flex justify-content-between align-items-center">
-                                    <h4>Zawartość kursu</h4>
-                                    {hasModeratorAccess ? (
-                                        <a href={`/courses/${courseId}/add-chapter`} 
-                                        className="btn btn-primary">
-                                            Dodaj nowy dział
-                                        </a>
-                                    ) : (
-                                        <a href={`/courses/${courseId}/payment`} 
-                                        className="btn btn-primary">
-                                            Kup kurs
-                                        </a>  
-                                    )}
-                                </div>                               
-                                {course.chapters?.length > 0 ? (
-                                    <div className="chapters mt-3">
-                                        {course.chapters.map(chapter => (
+                                <h4>Zawartość kursu</h4>
+                                <div>
+                                    Aby uzyskać dostęp do pełnej zawartości kursu, musisz go zakupić.
+                                </div>
+                                <div className="chapters mt-3">
+                                    {course.chapters?.length > 0 ? (
+                                        course.chapters.map(chapter => (
                                             <div key={chapter.id} className="card mb-2">
                                                 <div className="card-body">
                                                     <div className="d-flex justify-content-between align-items-center">
                                                         <h5 className="mb-0">{chapter.title}</h5>
-                                                        {isAuthenticated ? (
-                                                            <a 
-                                                                href={`/courses/${courseId}/chapters/${chapter.id}`}
-                                                                className="btn btn-outline-primary btn-sm"
-                                                            >
-                                                                Przejdź do działu
-                                                            </a>
-                                                        ) : (
-                                                            <a 
-                                                                href={`/login`}
-                                                                className="btn btn-outline-primary btn-sm"
-                                                            >
-                                                                Zaloguj się, aby uzyskać dostęp
-                                                            </a>
-                                                        )}
-                                                    </div>
-                                                    {chapter.pages?.length > 0 && (
                                                         <small className="text-muted">
-                                                            {chapter.pages.length} {chapter.pages.length === 1 ? 'strona' : 'stron'}
+                                                            {chapter.pages?.length || 0} {chapter.pages?.length === 1 ? 'strona' : 'stron'}
                                                         </small>
-                                                    )}
+                                                    </div>
+                                                    <div className="mt-2">
+                                                        {chapter.pages?.map(page => (
+                                                            <div key={page.id} className="ms-3 text-muted">
+                                                                {page.type === 'CONTENT' && '📄 '}
+                                                                {page.type === 'QUIZ' && '❓ '}
+                                                                {page.type === 'CODING' && '💻 '}
+                                                                {page.title}
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="mt-3">Ten kurs nie ma jeszcze żadnych działów</p>
-                                )}
+                                        ))
+                                    ) : (
+                                        <p className="text-muted">Ten kurs nie ma jeszcze żadnych działów.</p>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -213,6 +183,26 @@
                                         <li><strong>Cena:</strong> {parseFloat(course.price).toFixed(2)} PLN</li>
                                     </ul>
                                 </div>
+                                {!isAuthenticated && (
+                                    <div className="card-footer">
+                                        <div className="d-grid gap-2">
+                                            {isAuthenticated ? (
+                                                <a href={`/courses/${courseId}`} className="btn btn-primary">
+                                                    Kup dostęp do kursu
+                                                </a>
+                                            ) : (
+                                                <>
+                                                    <a href="/login" className="btn btn-primary">
+                                                        Zaloguj się
+                                                    </a>
+                                                    <small className="text-muted text-center">
+                                                        Musisz być zalogowany, aby kupić kurs
+                                                    </small>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -222,7 +212,7 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(
-            <CourseDetail 
+            <CourseOverview 
                 isAuthenticated={appData.isAuthenticated} 
                 csrfToken={appData.csrfToken}
                 currentUsername={appData.currentUsername}

@@ -1456,3 +1456,18 @@ class QuizViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsAuthenticated(), IsInstructor()]
         return [IsAuthenticated()]
+    
+@login_required
+def payment_view(request, course_id):
+    try:
+        course = Course.objects.get(id=course_id)
+        if Payment.objects.filter(user=request.user, course=course, status='ACCEPTED').exists():
+            return redirect('course_detail', course_id=course_id)
+        
+        context = {
+            'course': course,
+            'stripe_publishable_key': settings.STRIPE_PK
+        }
+        return render(request, 'payment.html', context)
+    except Course.DoesNotExist:
+        raise Http404("Kurs nie istnieje")

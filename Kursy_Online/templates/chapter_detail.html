@@ -67,6 +67,9 @@
             const [isEditingTitle, setIsEditingTitle] = React.useState(false);
             const [editedTitle, setEditedTitle] = React.useState('');
             const [editError, setEditError] = React.useState(null);
+            const [hasModeratorAccess, setHasModeratorAccess] = React.useState(false);
+            const isAuthenticated = "{% if user.is_authenticated %}true{% else %}false{% endif %}" === "true";
+            const currentUsername = "{{ user.username }}";
             const courseId = window.location.pathname.split('/')[2];
             const chapterId = window.location.pathname.split('/')[4];
 
@@ -81,6 +84,16 @@
                     const data = await response.json();
                     setChapter(data);
                     setEditedTitle(data.title);
+                    
+                    const courseResponse = await fetch(`/api/courses/${courseId}/`);
+                    if (courseResponse.ok) {
+                        const courseData = await courseResponse.json();
+                        const isInstructor = courseData.instructor?.username === currentUsername;
+                        const isModerator = courseData.moderators?.some(
+                            mod => mod.username === currentUsername
+                        );
+                        setHasModeratorAccess(isInstructor || isModerator);
+                    }
                 } catch (err) {
                     setError(err.message);
                 } finally {
@@ -196,7 +209,7 @@
                         <div className="col-12">
                             <div className="d-flex justify-content-between align-items-center mb-4">
                                 <div className="d-flex align-items-center">
-                                    {isEditingTitle ? (
+                                    {isEditingTitle && hasModeratorAccess ? (
                                         <div className="input-group me-2">
                                             <input
                                                 type="text"
@@ -225,21 +238,25 @@
                                     ) : (
                                         <>
                                             <h2 className="mb-0 me-3">{chapter.title}</h2>
-                                            <button 
-                                                className="btn btn-outline-secondary btn-sm"
-                                                onClick={() => setIsEditingTitle(true)}
-                                            >
-                                                ✎ Edytuj nazwę
-                                            </button>
+                                            {hasModeratorAccess && (
+                                                <button 
+                                                    className="btn btn-outline-secondary btn-sm"
+                                                    onClick={() => setIsEditingTitle(true)}
+                                                >
+                                                    ✎ Edytuj nazwę
+                                                </button>
+                                            )}
                                         </>
                                     )}
                                 </div>
-                                <button 
-                                    className="btn btn-primary"
-                                    onClick={() => setShowCreatePageModal(true)}
-                                >
-                                    Dodaj stronę
-                                </button>
+                                {hasModeratorAccess && (
+                                    <button 
+                                        className="btn btn-primary"
+                                        onClick={() => setShowCreatePageModal(true)}
+                                    >
+                                        Dodaj stronę
+                                    </button>
+                                )}
                             </div>
                             
                             {editError && (
@@ -263,23 +280,35 @@
                                                 </small>
                                             </div>
                                             <div>
-                                                <a href={getPageLink(page)}
-                                                className="btn btn-sm btn-outline-primary me-2">
-                                                    Zobacz
-                                                </a>
-                                                <a href={`/courses/${courseId}/chapters/${chapterId}/pages/${page.id}/edit`}
-                                                className="btn btn-sm btn-outline-secondary me-2">
-                                                    Edytuj
-                                                </a>
-                                                {page.type === 'CONTENT' && (
-                                                    <a href={`/courses/${courseId}/chapters/${chapterId}/pages/${page.id}/media/`}
-                                                    className="btn btn-sm btn-outline-info me-2">
-                                                        Edytuj media
+                                                {isAuthenticated ? (
+                                                    <>
+                                                        <a href={getPageLink(page)}
+                                                        className="btn btn-sm btn-outline-primary me-2">
+                                                            Zobacz
+                                                        </a>
+                                                        {hasModeratorAccess && (
+                                                            <>
+                                                                <a href={`/courses/${courseId}/chapters/${chapterId}/pages/${page.id}/edit`}
+                                                                className="btn btn-sm btn-outline-secondary me-2">
+                                                                    Edytuj
+                                                                </a>
+                                                                {page.type === 'CONTENT' && (
+                                                                    <a href={`/courses/${courseId}/chapters/${chapterId}/pages/${page.id}/media/`}
+                                                                    className="btn btn-sm btn-outline-info me-2">
+                                                                        Edytuj media
+                                                                    </a>
+                                                                )}
+                                                                <button className="btn btn-sm btn-outline-danger">
+                                                                    Usuń
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <a href="/login" className="btn btn-sm btn-outline-primary">
+                                                        Zaloguj się, aby uzyskać dostęp
                                                     </a>
                                                 )}
-                                                <button className="btn btn-sm btn-outline-danger">
-                                                    Usuń
-                                                </button>
                                             </div>
                                         </div>
                                     ))}
@@ -303,7 +332,6 @@
                 </div>
             );
         };
-
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<ChapterDetail />);

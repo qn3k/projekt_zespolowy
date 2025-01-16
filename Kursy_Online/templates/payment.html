@@ -1,0 +1,295 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Płatność za kurs</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'styles.css' %}">
+    <script src="https://js.stripe.com/v3/"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#"><img src="{% static 'logo.png' %}" alt="Logo" class="logo"></a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'home' %}">Strona Główna</a>
+                        </li>
+                        {% if user.is_authenticated %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">Profil</a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{% url 'my_courses' %}">Moje kursy</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'profile' %}">Mój profil</a></li>
+                                    <li>
+                                        <form method="post" action="{% url 'auth-logout' %}" class="d-inline" id="logout-form">
+                                            {% csrf_token %}
+                                            <button type="submit" class="dropdown-item">Wyloguj</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <span class="nav-link">Witaj, {{ user.username }}!</span>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'login' %}">Logowanie</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'register' %}">Rejestracja</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const Alert = ({ children, variant }) => {
+            const className = variant === 'error' 
+                ? 'alert alert-danger' 
+                : 'alert alert-success';
+            return <div className={className} role="alert">{children}</div>;
+        };
+
+        const PaymentProcessing = () => {
+            const [loading, setLoading] = React.useState(false);
+            const [error, setError] = React.useState(null);
+            const [message, setMessage] = React.useState(null);
+            const [paymentData, setPaymentData] = React.useState({
+                method: 'CARD',
+                price: 0,
+                courseTitle: '',
+                cardholderName: ''
+            });
+            const [stripe, setStripe] = React.useState(null);
+            const [elements, setElements] = React.useState(null);
+
+            React.useEffect(() => {
+                // Initialize Stripe
+                const stripeInstance = Stripe('{{ stripe_publishable_key }}');
+                setStripe(stripeInstance);
+
+                // Extract course ID from URL
+                const courseId = window.location.pathname.split('/')[2];
+                
+                const fetchCourseData = async () => {
+                    try {
+                        const response = await fetch(`/api/courses/${courseId}/`);
+                        if (!response.ok) throw new Error('Failed to fetch course data');
+                        
+                        const courseData = await response.json();
+                        setPaymentData(prev => ({
+                            ...prev,
+                            price: courseData.price,
+                            courseTitle: courseData.title
+                        }));
+
+                        // Initialize Stripe Elements
+                        const elementsInstance = stripeInstance.elements();
+                        const cardElement = elementsInstance.create('card');
+                        cardElement.mount('#card-element');
+                        setElements(elementsInstance);
+                    } catch (err) {
+                        setError(err.message);
+                    }
+                };
+
+                fetchCourseData();
+            }, []);
+
+            const handleMethodChange = (e) => {
+                setPaymentData(prev => ({
+                    ...prev,
+                    method: e.target.value
+                }));
+            };
+
+            const getCSRFToken = () => {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === 'csrftoken') return value;
+                }
+                return '';
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError(null);
+                
+                const courseId = window.location.pathname.split('/')[2];
+
+                try {
+                    const response = await fetch(`/api/payments/create/${courseId}/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken()
+                        },
+                        body: JSON.stringify({
+                            method: paymentData.method
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Błąd podczas tworzenia płatności');
+                    }
+
+                    const data = await response.json();
+                    
+                    if (paymentData.method === 'CARD' && data.clientSecret) {
+                        const { error } = await stripe.confirmCardPayment(data.clientSecret, {
+                            payment_method: {
+                                card: elements.getElement('card'),
+                                billing_details: {
+                                    name: paymentData.cardholderName,
+                                },
+                            },
+                        });
+
+                        if (error) {
+                            throw new Error(error.message);
+                        }
+
+                        setMessage('Płatność zakończona sukcesem! Przekierowywanie...');
+                        setTimeout(() => {
+                            window.location.href = `/courses/${courseId}`;
+                        }, 2000);
+                    } else if (paymentData.method === 'PAYPAL') {
+                        // Handle PayPal payment
+                        window.location.href = data.paypalUrl;
+                    }
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="container py-5">
+                    <div className="row justify-content-center">
+                        <div className="col-md-8">
+                            <div className="card shadow">
+                                <div className="card-body p-4">
+                                    <h2 className="card-title text-center mb-4">Płatność za kurs</h2>
+                                    
+                                    {error && <Alert variant="error">{error}</Alert>}
+                                    {message && <Alert variant="success">{message}</Alert>}
+
+                                    <div className="mb-4">
+                                        <h3 className="h5 mb-3">Podsumowanie zamówienia</h3>
+                                        <div className="bg-light p-3 rounded">
+                                            <div className="row mb-2">
+                                                <div className="col">Kurs:</div>
+                                                <div className="col text-end fw-bold">{paymentData.courseTitle}</div>
+                                            </div>
+                                            <div className="row">
+                                                <div className="col">Cena:</div>
+                                                <div className="col text-end fw-bold">{paymentData.price} PLN</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <form onSubmit={handleSubmit}>
+                                        <div className="mb-4">
+                                            <label className="form-label">Metoda płatności:</label>
+                                            <div className="d-flex gap-3">
+                                                <div className="form-check">
+                                                    <input
+                                                        type="radio"
+                                                        id="card"
+                                                        name="method"
+                                                        value="CARD"
+                                                        checked={paymentData.method === 'CARD'}
+                                                        onChange={handleMethodChange}
+                                                        className="form-check-input"
+                                                    />
+                                                    <label className="form-check-label" htmlFor="card">
+                                                        Karta płatnicza
+                                                    </label>
+                                                </div>
+                                                {/*<div className="form-check">
+                                                    <input
+                                                        type="radio"
+                                                        id="paypal"
+                                                        name="method"
+                                                        value="PAYPAL"
+                                                        checked={paymentData.method === 'PAYPAL'}
+                                                        onChange={handleMethodChange}
+                                                        className="form-check-input"
+                                                    />
+                                                    <label className="form-check-label" htmlFor="paypal">
+                                                        PayPal
+                                                    </label>
+                                                </div>*/}
+                                            </div>
+                                        </div>
+
+                                        {paymentData.method === 'CARD' && (
+                                            <div className="mb-4">
+                                                <label className="form-label">Imię i nazwisko na karcie:</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-control mb-3"
+                                                    value={paymentData.cardholderName}
+                                                    onChange={(e) => setPaymentData(prev => ({
+                                                        ...prev,
+                                                        cardholderName: e.target.value
+                                                    }))}
+                                                    required
+                                                />
+                                                <label className="form-label">Dane karty:</label>
+                                                <div id="card-element" className="form-control"></div>
+                                            </div>
+                                        )}
+
+                                        <button
+                                            type="submit"
+                                            className="btn btn-primary w-100"
+                                            disabled={loading}
+                                        >
+                                            {loading ? (
+                                                <span>
+                                                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                                    Przetwarzanie...
+                                                </span>
+                                            ) : (
+                                                `Zapłać ${paymentData.price} PLN`
+                                            )}
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<PaymentProcessing />);
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

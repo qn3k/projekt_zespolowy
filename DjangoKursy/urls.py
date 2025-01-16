@@ -24,7 +24,7 @@ from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view,
     CourseViewSet, ChapterViewSet, PageViewSet, password_reset_request_view, password_reset_confirm_view,create_course,technology_management_view, \
     PaymentViewSet, TechnologyViewSet, course_detail_view, create_chapter_view, profile_view, get_balance, get_available_moderators,    \
     my_courses_view, chapter_detail_view, create_chapter_page, manage_media_view, edit_chapter_page_view, page_detail_view, ContentImageViewSet, ContentVideoViewSet, \
-    quiz_page_detail_view, create_quiz_view
+    quiz_page_detail_view, create_quiz_view, payment_view
 
 
 router = DefaultRouter()
@@ -59,12 +59,14 @@ urlpatterns = [
     path('api/users/', get_available_moderators, name='available-moderators'),
     path('login/', login_view, name='login'),
     path('logout/', AuthViewSet.as_view({'post': 'logout'}), name='auth-logout'),
-    path('', home_view, name='home'),
+    path('home/', home_view, name='home'),
+    path('', home_view, name='home_logged'),
     path('register/', register_view, name='register'),
     path('activate/', activate_view, name='activate'),
     path('reset-password/', password_reset_request_view, name='request_password_reset'),
     path('create-course/', create_course, name='create_course'),
     path('courses/<int:course_id>/', course_detail_view, name='course_detail'),
+    #path('courses/overview/<int:course_id>/', course_detail_overview, name='course_detail'),
     path('courses/add-chapter/', create_chapter_view, name='create_chapter'),
     path('courses/<int:course_id>/add-chapter/', create_chapter_view, name='create_chapter_with_id'),
     path('courses/<int:course_id>/chapters/<int:chapter_id>/', chapter_detail_view, name='chapter_detail'),
@@ -75,6 +77,7 @@ urlpatterns = [
     path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/<int:page_id>/quiz', quiz_page_detail_view, name='quiz_page_detail'),
     path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/create/quiz/',create_quiz_view,name='create_quiz'),
     path('profile/', profile_view, name='profile'),
+    path('courses/<int:course_id>/payment/', payment_view, name='course_payment'),
     path('my-courses/', my_courses_view, name='my_courses'),
     path('api/auth/balance/', get_balance, name='get-balance'),
     path('api/payout-history/', PayoutHistoryView.as_view(), name='payout-history'),

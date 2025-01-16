@@ -238,6 +238,7 @@ class CourseSerializer(serializers.ModelSerializer):
         
 class PublicCourseSerializer(serializers.ModelSerializer):
     instructor = UserSerializer()
+    chapters = ChapterSerializer(many=True, required=False)
     content = serializers.SerializerMethodField()
     average_rating = serializers.FloatField()
     total_reviews = serializers.IntegerField()
@@ -247,7 +248,7 @@ class PublicCourseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'description', 'cover_image',
             'price', 'level', 'instructor', 'content',
-            'average_rating', 'total_reviews', 'moderators'
+            'average_rating', 'total_reviews', 'moderators', 'chapters'
         ]
 
     def get_content(self, obj):

@@ -31,7 +31,7 @@ from .serializers import UserRegistrationSerializer, PayoutHistorySerializer, Us
     PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, \
      TestCaseSerializer,ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
     ContentImageCreateSerializer, ContentVideoCreateSerializer, CourseReviewSerializer, PublicCourseSerializer, \
-    TechnologySerializer
+    TechnologySerializer, PaymentSerializer
 from django.core.mail import EmailMessage
 import stripe
 
@@ -278,6 +278,10 @@ class CourseViewSet(viewsets.ModelViewSet):
                 return CourseSerializer if has_access else PublicCourseSerializer
         return CourseSerializer
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
     
     def perform_create(self, serializer):
         course = serializer.save(instructor=self.request.user)
@@ -884,25 +888,21 @@ def verify_email(request):
         return Response({  'error': 'Nieprawidłowy kod weryfikacyjny.' }, status=status.HTTP_400_BAD_REQUEST)
 
 
+
 class PaymentViewSet(viewsets.ViewSet):
+    serializer_class = PaymentSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Zwraca płatności danego użytkownika lub wszystkie dla admina"""
+        if self.request.user.is_staff:
+            return Payment.objects.all()
+        return Payment.objects.filter(user=self.request.user)
+        
     def get_permissions(self):
         if self.action == 'create_payment':
             return [IsAuthenticated()]
-        return [AllowAny()]
-
-    def list(self, request):
-        """
-        Zwraca listę wszystkich płatności (opcjonalnie filtrowaną po użytkowniku).
-        """
-        payments = Payment.objects.all()
-
-        # Opcjonalne filtrowanie dla zalogowanego użytkownika
-        if request.user.is_authenticated:
-            payments = payments.filter(user=request.user)
-
-        # Serializacja danych
-        data = [{"id": payment.id, "status": payment.status, "amount": payment.price} for payment in payments]
-        return Response(data)
+        return [IsAuthenticated()]
 
     @action(detail=False, methods=['POST'], url_path='create/(?P<course_id>[^/.]+)')
     def create_payment(self, request, course_id=None):
@@ -910,26 +910,33 @@ class PaymentViewSet(viewsets.ViewSet):
         try:
             course = Course.objects.get(id=course_id)
             method = request.data.get('method', 'PAYPAL')
+
             if Payment.objects.filter(user=request.user, course=course, status='ACCEPTED').exists():
                 return Response({'error': 'Już dokonałeś płatności za ten kurs'}, status=400)
-            if method not in ['PAYPAL','CARD']:
-                return Response({'error': 'Nie obsługujemy tej metody płatności.'}, status=400)
-            id = stripe.PaymentIntent.create(
+
+            payment = Payment.objects.filter(user=request.user, course=course, status='PENDING').first()
+            
+            intent = stripe.PaymentIntent.create(
                 amount=int(course.price * 100),
                 currency='pln',
                 payment_method_types=['card', 'paypal'],
                 metadata={'course_id': course.id, 'user_id': request.user.id}
             )
-            payment = Payment.objects.create(
-                user=request.user,
-                course=course,
-                price=course.price,
-                stripe_payment_id=id.id,
-                status='PENDING'
-            )
+
+            if payment:
+                payment.stripe_payment_id = intent.id
+                payment.save()
+            else:
+                payment = Payment.objects.create(
+                    user=request.user,
+                    course=course,
+                    price=course.price,
+                    stripe_payment_id=intent.id,
+                    status='PENDING'
+                )
 
             return Response({
-                'clientSecret': id.client_secret,
+                'clientSecret': intent.client_secret,
                 'publicKey': settings.STRIPE_PK
             })
 

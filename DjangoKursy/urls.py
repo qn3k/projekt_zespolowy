@@ -81,6 +81,7 @@ urlpatterns = [
     path('my-courses/', my_courses_view, name='my_courses'),
     path('api/auth/balance/', get_balance, name='get-balance'),
     path('api/payout-history/', PayoutHistoryView.as_view(), name='payout-history'),
+    path('api/payments/create/<int:course_id>/', PaymentViewSet.as_view({'post': 'create_payment'}), name='create-payment'),
     path('technologies/', technology_management_view, name='technology_management'),
     path('reset-password-confirm/<uidb64>/<token>/', password_reset_confirm_view, name='password_reset_confirm')
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

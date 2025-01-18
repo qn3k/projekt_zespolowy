@@ -75,7 +75,7 @@
             const courseId = "{{ course_id }}";
 
             React.useEffect(() => {
-                const checkAccess = async () => {
+                const fetchCourse = async () => {
                     try {
                         const response = await fetch(`/api/courses/${courseId}/`);
                         if (!response.ok) throw new Error('Failed to fetch course');
@@ -83,10 +83,8 @@
                         setCourse(data);
                         
                         if (isAuthenticated) {
-                            // Check if user is instructor
                             const isInstructor = data.instructor?.username === currentUsername;
                             
-                            // Check if user is in moderators array
                             const isModerator = data.moderators?.some(
                                 mod => mod.username === currentUsername
                             );
@@ -100,7 +98,7 @@
                     }
                 };
 
-                checkAccess();
+                fetchCourse();
             }, [courseId, currentUsername, isAuthenticated]);
 
             if (loading) return <div className="container mt-5"><div className="alert alert-info">Loading...</div></div>;
@@ -142,11 +140,15 @@
                                         className="btn btn-primary">
                                             Dodaj nowy dział
                                         </a>
+                                    ) : course.has_access ? (
+                                        <span className="badge bg-success py-2 px-3">
+                                            Kurs zakupiony ✓
+                                        </span>
                                     ) : (
                                         <a href={`/courses/${courseId}/payment`} 
                                         className="btn btn-primary">
                                             Kup kurs
-                                        </a>  
+                                        </a>
                                     )}
                                 </div>                               
                                 {course.chapters?.length > 0 ? (

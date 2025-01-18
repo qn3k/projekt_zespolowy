@@ -1,0 +1,89 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Płatność zatwierdzona</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'styles.css' %}">
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#"><img src="{% static 'logo.png' %}" alt="Logo" class="logo"></a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'home' %}">Strona Główna</a>
+                        </li>
+                        {% if user.is_authenticated %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">Profil</a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{% url 'my_courses' %}">Moje kursy</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'profile' %}">Mój profil</a></li>
+                                    <li>
+                                        <form method="post" action="{% url 'auth-logout' %}" class="d-inline" id="logout-form">
+                                            {% csrf_token %}
+                                            <button type="submit" class="dropdown-item">Wyloguj</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <span class="nav-link">Witaj, {{ user.username }}!</span>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container my-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card border-success">
+                    <div class="card-header bg-success text-white">
+                        <h2 class="text-center mb-0">Płatność zatwierdzona!</h2>
+                    </div>
+                    <div class="card-body text-center">
+                        <div class="mb-4">
+                            <svg class="text-success mb-3" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                            <h3>Dziękujemy za zakup!</h3>
+                            <p class="text-muted">Twoja płatność została przetworzona pomyślnie.</p>
+                        </div>
+
+                        <div class="mb-4">
+                            <h4>Szczegóły zamówienia</h4>
+                            <p><strong>Kurs:</strong> {{ course.title }}</p>
+                            <p><strong>Kwota:</strong> {{ payment.price }} PLN</p>
+                            <p><strong>Data:</strong> {{ payment.date|date:"d.m.Y H:i" }}</p>
+                        </div>
+
+                        <div class="mt-4">
+                            <a href="{% url 'course_detail' course.id %}" class="btn btn-primary me-2">
+                                Przejdź do kursu
+                            </a>
+                            <a href="{% url 'my_courses' %}" class="btn btn-outline-primary">
+                                Moje kursy
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

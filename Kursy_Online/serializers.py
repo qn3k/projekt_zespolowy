@@ -214,9 +214,10 @@ class CourseSerializer(serializers.ModelSerializer):
     total_reviews = serializers.IntegerField(read_only=True)
     instructor = UserInformationSerializer(read_only=True)
     moderators = UserInformationSerializer(many=True, read_only=True)
+    has_access = serializers.SerializerMethodField()
     class Meta:
         model = Course
-        fields = ['id', 'title', 'description', 'cover_image', 'price', 'level', 'technologies', 'instructor', 'moderators','created_at', 'updated_at', 'is_published', 'chapters', 'reviews', 'average_rating', 'total_reviews']
+        fields = ['id', 'title', 'description', 'cover_image', 'price', 'level', 'technologies', 'instructor', 'moderators','created_at', 'updated_at', 'is_published', 'chapters', 'reviews', 'average_rating', 'total_reviews',  'has_access']
 
 
     def create(self, validated_data):
@@ -235,6 +236,20 @@ class CourseSerializer(serializers.ModelSerializer):
                 chapter_serializer.save(course=course)
 
         return course
+    
+    def get_has_access(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        
+        if obj.instructor == request.user or request.user in obj.moderators.all():
+            return True
+            
+        return Payment.objects.filter(
+            user=request.user,
+            course=obj,
+            status='ACCEPTED'
+        ).exists()
         
 class PublicCourseSerializer(serializers.ModelSerializer):
     instructor = UserSerializer()

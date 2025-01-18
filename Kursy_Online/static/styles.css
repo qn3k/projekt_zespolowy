@@ -95,3 +95,13 @@ main {
     border: 'none'; 
     box-Shadow: 'none'; 
 }
+
+.star {
+    text-decoration: none;
+    font-size: 24px;
+    color: #ccc; /* Domyślny kolor */
+}
+
+.star-active {
+    color: #ffc107; /* Aktywny kolor */
+}

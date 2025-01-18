@@ -1,3 +1,4 @@
+from neo4j import Transaction
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
@@ -13,8 +14,14 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'first_name', 'last_name',
-                 'phone_number', 'email_verified', 'two_factor_enabled', 'balance')
+                 'phone_number', 'email_verified', 'two_factor_enabled', 'balance', 'profile_picture')
         read_only_fields = ('id', 'email_verified', 'balance')
+
+    def get_profile_picture(self, obj):
+        request = self.context.get('request')
+        if obj.profile_picture and hasattr(obj.profile_picture, 'url'):
+            return request.build_absolute_uri(obj.profile_picture.url) if request else obj.profile_picture.url
+        return request.build_absolute_uri('/media/profile_pictures/pfp.png') if request else '/media/profile_pictures/pfp.png'
 
 class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
@@ -109,6 +116,38 @@ class QuizSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quiz
         fields = ['description', 'questions']
+
+def update(self, instance, validated_data):
+        print(f"QuizSerializer.update() called with data: {validated_data}")
+        
+        try:
+            with Transaction.atomic():
+                instance.description = validated_data.get('description', instance.description)
+                instance.save()
+
+                if 'questions' in validated_data:
+                    print("Updating questions...")
+                    instance.questions.all().delete()
+                    
+                    for question_data in validated_data['questions']:
+                        print(f"Processing question: {question_data}")
+                        question = QuizQuestion.objects.create(
+                            quiz=instance,
+                            question=question_data['question'],
+                            order=question_data.get('order', 1)
+                        )
+
+                        for answer_data in question_data.get('answers', []):
+                            QuizAnswer.objects.create(
+                                question=question,
+                                answer=answer_data['answer'],
+                                is_correct=answer_data.get('is_correct', False)
+                            )
+                
+                return instance
+        except Exception as e:
+            print(f"Error in QuizSerializer.update(): {str(e)}")
+            raise serializers.ValidationError(str(e))
 
 class TestCaseSerializer(serializers.ModelSerializer):
     class Meta:

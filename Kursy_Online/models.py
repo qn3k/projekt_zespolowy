@@ -9,7 +9,7 @@ class User(AbstractUser):
     last_password_change = models.DateTimeField(default=timezone.now)
     two_factor_enabled = models.BooleanField(default=False)
     failed_login_attempts = models.IntegerField(default=0)
-    profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
+    profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True, default='static/pfp.png')
     balance = models.FloatField(default=0.00)
 
     objects = UserManager()
@@ -85,6 +85,9 @@ class CourseReview(models.Model):
 
     class Meta:
         unique_together = ['course', 'user']
+
+    def __str__(self):
+        return f"Review for {self.course.title} by {self.user.username} - {self.rating} stars"
 
 class Chapter(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='chapters')

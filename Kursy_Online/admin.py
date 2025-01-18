@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Course,Technology, Chapter, Page, ContentPage, ContentImage, ContentVideo, Quiz, QuizQuestion, QuizAnswer, CodingExercise, TestCase, UserProgress, CourseReview, Payment, PayoutHistory
+from .models import User, Course,Technology, Chapter, Page, ContentPage, ContentImage, ContentVideo, Quiz, QuizQuestion, QuizAnswer, CodingExercise, TestCase, UserProgress, CourseReview, Payment, PayoutHistory, LoginHistory
 
 admin.site.register(User)
 admin.site.register(Course)
@@ -18,3 +18,4 @@ admin.site.register(UserProgress)
 admin.site.register(CourseReview)
 admin.site.register(Payment)
 admin.site.register(PayoutHistory)
+admin.site.register(LoginHistory)

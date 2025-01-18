@@ -18,16 +18,19 @@
                 </button>
                 <div class="collapse navbar-collapse" id="navbarNav">
                     <ul class="navbar-nav ms-auto">
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'home' %}">Strona Główna</a>
-                        </li>
                         {% if user.is_authenticated %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'home_logged' %}">Strona Główna</a>
+                            </li>                       
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Profil</a>
                                 <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                                    <li><a class="dropdown-item" href="">Moje kursy</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'my_courses' %}">Moje kursy</a></li>
                                     <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
-                                    <li><a class="dropdown-item" href="">Mój profil</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'profile' %}">Mój profil</a></li>
+                                    {% if user.is_superuser %}
+                                    <li><a class="dropdown-item" href="{% url 'technology_management' %}">Dodaj technogie</a></li>   
+                                    {% endif %}
                                     <li>                                
                                         <form method="post" action="{% url 'auth-logout' %}" class="d-inline" id="logout-form">
                                         {% csrf_token %}
@@ -40,6 +43,9 @@
                                 </li>
                             </li>
                         {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'home' %}">Strona Główna</a>
+                            </li>    
                             <li class="nav-item">
                                 <a class="nav-link" href="{% url 'login' %}">Logowanie</a>
                             </li>

@@ -1,0 +1,305 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doładowanie konta</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'styles.css' %}">
+    <script src="https://js.stripe.com/v3/"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#"><img src="{% static 'logo.png' %}" alt="Logo" class="logo"></a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'home' %}">Strona Główna</a>
+                        </li>
+                        {% if user.is_authenticated %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">Profil</a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{% url 'my_courses' %}">Moje kursy</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'profile' %}">Mój profil</a></li>
+                                    <li>
+                                        <form method="post" action="{% url 'auth-logout' %}" class="d-inline" id="logout-form">
+                                            {% csrf_token %}
+                                            <button type="submit" class="dropdown-item">Wyloguj</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <span class="nav-link">Witaj, {{ user.username }}!</span>
+                            </li>
+                        {% else %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'login' %}">Logowanie</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'register' %}">Rejestracja</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const Alert = ({ children, variant }) => {
+            const className = variant === 'error' 
+                ? 'alert alert-danger' 
+                : 'alert alert-success';
+            return <div className={className} role="alert">{children}</div>;
+        };
+
+        const AddBalancePage = () => {
+            const [loading, setLoading] = React.useState(false);
+            const [error, setError] = React.useState(null);
+            const [message, setMessage] = React.useState(null);
+            const [balanceData, setBalanceData] = React.useState({
+                method: 'CARD',
+                amount: 50,
+                cardholderName: ''
+            });
+            const [stripe, setStripe] = React.useState(null);
+            const [elements, setElements] = React.useState(null);
+            const [currentBalance, setCurrentBalance] = React.useState(0);
+
+            const predefinedAmounts = [10, 50, 100, 200, 500];
+
+            React.useEffect(() => {
+                const stripeInstance = Stripe('{{ stripe_publishable_key }}');
+                setStripe(stripeInstance);
+
+                const elementsInstance = stripeInstance.elements();
+                handleStripeElementMount(elementsInstance);
+
+                const fetchBalance = async () => {
+                    try {
+                        const response = await fetch('/api/auth/balance/');
+                        if (!response.ok) throw new Error('Failed to fetch balance');
+                        
+                        const data = await response.json();
+                        setCurrentBalance(parseFloat(data.balance));
+                    } catch (err) {
+                        console.error('Balance fetch error:', err);
+                    }
+                };
+
+                fetchBalance();
+            }, []);
+
+            const handleAmountChange = (amount) => {
+                setBalanceData(prev => ({
+                    ...prev,
+                    amount: amount
+                }));
+            };
+
+            const getCSRFToken = () => {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === 'csrftoken') return value;
+                }
+                return '';
+            };
+
+            const handleStripeElementMount = (elementsInstance) => {
+                const cardElement = elementsInstance.create('card');
+                cardElement.mount('#card-element');
+                setElements(elementsInstance);
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError(null);
+                setMessage(null);
+
+                try {
+                    const response = await fetch('/api/payments/create-top-up/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken()
+                        },
+                        body: JSON.stringify({
+                            amount: balanceData.amount,
+                            payment_method: balanceData.method
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Błąd podczas tworzenia płatności');
+                    }
+
+                    const data = await response.json();
+                    
+                    // Confirm card payment
+                    const { error, paymentIntent } = await stripe.confirmCardPayment(data.clientSecret, {
+                        payment_method: {
+                            card: elements.getElement('card'),
+                            billing_details: {
+                                name: balanceData.cardholderName,
+                            },
+                        },
+                    });
+
+                    if (error) {
+                        throw new Error(error.message);
+                    }
+
+                    // Confirm top-up on server
+                    const confirmResponse = await fetch('/api/payments/confirm-top-up/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken()
+                        },
+                        body: JSON.stringify({
+                            payment_intent_id: paymentIntent.id,
+                            amount: balanceData.amount
+                        })
+                    });
+
+                    if (!confirmResponse.ok) {
+                        const confirmErrorData = await confirmResponse.json();
+                        throw new Error(confirmErrorData.error || 'Błąd podczas potwierdzania doładowania');
+                    }
+
+                    const confirmData = await confirmResponse.json();
+                    
+                    setMessage(`Doładowanie ${balanceData.amount} PLN zostało zrealizowane pomyślnie!`);
+                    setCurrentBalance(confirmData.new_balance);
+                    
+                    // Optional: Redirect or clear form after success
+                    setTimeout(() => {
+                        window.location.href = '/profile';
+                    }, 2000);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="container py-5">
+                    <div className="row justify-content-center">
+                        <div className="col-md-8">
+                            <div className="card shadow">
+                                <div className="card-body p-4">
+                                    <h2 className="card-title text-center mb-4">Doładowanie konta</h2>
+                                    
+                                    {error && <Alert variant="error">{error}</Alert>}
+                                    {message && <Alert variant="success">{message}</Alert>}
+
+                                    <div className="mb-4">
+                                        <h3 className="h5 mb-3">Aktualny stan konta</h3>
+                                        <div className="bg-light p-3 rounded text-center">
+                                            <h4 className="mb-0">{currentBalance.toFixed(2)} PLN</h4>
+                                        </div>
+                                    </div>
+
+                                    <form onSubmit={handleSubmit}>
+                                        <div className="mb-4">
+                                            <label className="form-label">Wybierz kwotę doładowania:</label>
+                                            <div className="d-flex flex-wrap gap-2 mb-3">
+                                                {predefinedAmounts.map(amount => (
+                                                    <button 
+                                                        key={amount} 
+                                                        type="button"
+                                                        className={`btn ${balanceData.amount === amount ? 'btn-primary' : 'btn-outline-primary'}`}
+                                                        onClick={() => handleAmountChange(amount)}
+                                                    >
+                                                        {amount} PLN
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <input 
+                                                type="number" 
+                                                className="form-control" 
+                                                placeholder="Inna kwota"
+                                                value={balanceData.amount}
+                                                onChange={(e) => handleAmountChange(parseFloat(e.target.value))}
+                                                min="10" 
+                                                max="1000"
+                                            />
+                                            <small className="form-text text-muted">
+                                                Minimalna kwota doładowania: 10 PLN, maksymalna: 1000 PLN
+                                            </small>
+                                        </div>
+
+                                        <div className="mb-4">
+                                            <label className="form-label">Imię i nazwisko na karcie:</label>
+                                            <input
+                                                type="text"
+                                                className="form-control mb-3"
+                                                value={balanceData.cardholderName}
+                                                onChange={(e) => setBalanceData(prev => ({
+                                                    ...prev,
+                                                    cardholderName: e.target.value
+                                                }))}
+                                                placeholder="Imię i nazwisko widoczne na karcie"
+                                                required
+                                            />
+                                            <label className="form-label">Dane karty:</label>
+                                            <div 
+                                                id="card-element" 
+                                                className="form-control"
+                                                style={{ 
+                                                    height: '2.5rem', 
+                                                    paddingTop: '0.75rem', 
+                                                    paddingLeft: '0.75rem' 
+                                                }}
+                                            ></div>
+                                            <div id="card-errors" className="text-danger mt-2" role="alert"></div>
+                                        </div>
+
+                                        <button
+                                            type="submit"
+                                            className="btn btn-primary w-100"
+                                            disabled={loading || balanceData.amount < 10 || balanceData.amount > 1000}
+                                        >
+                                            {loading ? (
+                                                <span>
+                                                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                                    Przetwarzanie...
+                                                </span>
+                                            ) : (
+                                                `Doładuj konto ${balanceData.amount} PLN`
+                                            )}
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<AddBalancePage />);
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

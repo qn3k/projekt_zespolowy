@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tworzenie quizu</title>
+    <title>Edycja quizu</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="{% static 'styles.css' %}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
@@ -54,24 +54,6 @@
 
         .quiz-description {
             min-height: 100px;
-        }
-
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
-        .loading-spinner {
-            width: 3rem;
-            height: 3rem;
         }
     </style>
 </head>
@@ -250,55 +232,64 @@
             );
         };
 
-        const CreateQuiz = () => {
-            const [formData, setFormData] = React.useState({
-                title: '',
-                description: '',
-                order: 1,
-                questions: [
-                    {
-                        question: '',
-                        order: 1,
-                        answers: [
-                            { answer: '', is_correct: true },
-                            { answer: '', is_correct: false }
-                        ]
-                    }
-                ]
-            });
-            const [loading, setLoading] = React.useState(false);
+        const EditQuiz = () => {
+
+            const getCSRFToken = () => {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === 'csrftoken') return value;
+                }
+                return '';
+            };
+
+            const [quiz, setQuiz] = React.useState(null);
+            const [loading, setLoading] = React.useState(true);
             const [error, setError] = React.useState(null);
             const [message, setMessage] = React.useState(null);
-            const [existingOrders, setExistingOrders] = React.useState([]);
             const [validation, setValidation] = React.useState({});
 
             const courseId = window.location.pathname.split('/')[2];
             const chapterId = window.location.pathname.split('/')[4];
+            const pageId = window.location.pathname.split('/')[6];
 
             React.useEffect(() => {
-                fetchExistingPages();
+                fetchQuiz();
             }, []);
+
+            const fetchQuiz = async () => {
+                try {
+                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/`);
+                    if (!response.ok) throw new Error('Failed to fetch quiz');
+                    const data = await response.json();
+                    setQuiz(data);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
 
             const validateForm = () => {
                 const errors = {};
-                if (!formData.title.trim()) {
+                if (!quiz.title?.trim()) {
                     errors.title = 'Tytuł jest wymagany';
                 }
-                if (formData.questions.length === 0) {
+                if (!quiz.quiz?.questions?.length) {
                     errors.questions = 'Quiz musi zawierać co najmniej jedno pytanie';
                 }
-                
-                formData.questions.forEach((question, index) => {
-                    if (!question.question.trim()) {
+
+                quiz.quiz?.questions?.forEach((question, index) => {
+                    if (!question.question?.trim()) {
                         if (!errors.questions) errors.questions = {};
                         errors.questions[index] = { question: 'Treść pytania jest wymagana' };
                     }
-                    if (question.answers.length < 2) {
+                    if (!question.answers?.length || question.answers.length < 2) {
                         if (!errors.questions) errors.questions = {};
                         if (!errors.questions[index]) errors.questions[index] = {};
                         errors.questions[index].answers = 'Pytanie musi mieć co najmniej 2 odpowiedzi';
                     }
-                    if (!question.answers.some(a => a.is_correct)) {
+                    if (!question.answers?.some(a => a.is_correct)) {
                         if (!errors.questions) errors.questions = {};
                         if (!errors.questions[index]) errors.questions[index] = {};
                         errors.questions[index].correctAnswer = 'Musisz zaznaczyć prawidłową odpowiedź';
@@ -309,30 +300,16 @@
                 return Object.keys(errors).length === 0;
             };
 
-            const fetchExistingPages = async () => {
-                try {
-                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/`);
-                    if (!response.ok) {
-                        throw new Error('Failed to fetch existing pages');
-                    }
-                    const pages = await response.json();
-                    const orders = pages.map(page => page.order);
-                    setExistingOrders(orders);
-                } catch (error) {
-                    setError('Nie udało się pobrać istniejących stron');
-                }
-            };
-
             const handleQuestionChange = (questionIndex, field, value) => {
-                const newQuestions = [...formData.questions];
-                newQuestions[questionIndex][field] = value;
-                setFormData({ ...formData, questions: newQuestions });
+                const updatedQuiz = { ...quiz };
+                updatedQuiz.quiz.questions[questionIndex][field] = value;
+                setQuiz(updatedQuiz);
             };
 
             const handleAnswerChange = (questionIndex, answerIndex, field, value) => {
-                const newQuestions = [...formData.questions];
-                newQuestions[questionIndex].answers[answerIndex][field] = value;
-                setFormData({ ...formData, questions: newQuestions });
+                const updatedQuiz = { ...quiz };
+                updatedQuiz.quiz.questions[questionIndex].answers[answerIndex][field] = value;
+                setQuiz(updatedQuiz);
             };
 
             const handleSubmit = async (e) => {
@@ -346,39 +323,57 @@
                 setError(null);
 
                 try {
-                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/`, {
+                    const url = `/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/update_content/`;
+                    console.log('Sending request to:', url);
+                    
+                    const requestData = {
+                        description: quiz.quiz.description,
+                        questions: quiz.quiz.questions.map(q => ({
+                            question: q.question,
+                            order: q.order,
+                            answers: q.answers.map(a => ({
+                                answer: a.answer,
+                                is_correct: a.is_correct
+                            }))
+                        }))
+                    };
+                    console.log('Request data:', requestData);
+
+                    const response = await fetch(url, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                            'X-CSRFToken': getCSRFToken()
                         },
-                        body: JSON.stringify({
-                            title: formData.title,
-                            type: 'QUIZ',
-                            order: parseInt(formData.order),
-                            quiz: {
-                                description: formData.description,
-                                questions: formData.questions.map((q, index) => ({
-                                    question: q.question,
-                                    order: index + 1,
-                                    answers: q.answers
-                                }))
-                            }
-                        })
+                        body: JSON.stringify(requestData)
                     });
 
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.detail || 'Nie udało się utworzyć quizu');
+                    console.log('Response status:', response.status);
+                    const contentType = response.headers.get('content-type');
+                    console.log('Response content type:', contentType);
+
+                    const responseText = await response.text();
+                    console.log('Response text:', responseText);
+
+                    let responseData;
+                    try {
+                        responseData = JSON.parse(responseText);
+                    } catch (e) {
+                        console.error('Error parsing response:', e);
+                        throw new Error('Otrzymano nieprawidłową odpowiedź z serwera');
                     }
 
-                    setMessage('Quiz został utworzony pomyślnie!');
-                    
+                    if (!response.ok) {
+                        throw new Error(responseData.error || responseData.detail || 'Nie udało się zaktualizować quizu');
+                    }
+
+                    setMessage('Quiz został zaktualizowany pomyślnie!');
                     setTimeout(() => {
                         window.location.href = `/courses/${courseId}/chapters/${chapterId}`;
                     }, 2000);
                 } catch (err) {
-                    setError(err.message);
+                    console.error('Error details:', err);
+                    setError(err.message || 'Wystąpił nieoczekiwany błąd');
                     window.scrollTo(0, 0);
                 } finally {
                     setLoading(false);
@@ -386,31 +381,52 @@
             };
 
             const addQuestion = () => {
-                setFormData({
-                    ...formData,
-                    questions: [
-                        ...formData.questions,
-                        {
-                            question: '',
-                            order: formData.questions.length + 1,
-                            answers: [
-                                { answer: '', is_correct: true },
-                                { answer: '', is_correct: false }
-                            ]
-                        }
+                const updatedQuiz = { ...quiz };
+                updatedQuiz.quiz.questions.push({
+                    question: '',
+                    order: updatedQuiz.quiz.questions.length + 1,
+                    answers: [
+                        { answer: '', is_correct: true },
+                        { answer: '', is_correct: false }
                     ]
                 });
+                setQuiz(updatedQuiz);
             };
 
             const removeQuestion = (index) => {
-                if (formData.questions.length === 1) {
+                if (quiz.quiz.questions.length === 1) {
                     setError('Quiz musi zawierać co najmniej jedno pytanie');
                     return;
                 }
-                const newQuestions = [...formData.questions];
-                newQuestions.splice(index, 1);
-                setFormData({ ...formData, questions: newQuestions });
+                const updatedQuiz = { ...quiz };
+                updatedQuiz.quiz.questions.splice(index, 1);
+                updatedQuiz.quiz.questions.forEach((q, i) => {
+                    q.order = i + 1;
+                });
+                setQuiz(updatedQuiz);
             };
+
+            if (loading) return (
+                <div className="container mt-4">
+                    <div className="text-center">
+                        <div className="spinner-border" role="status">
+                            <span className="visually-hidden">Ładowanie...</span>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            if (error) return (
+                <div className="container mt-4">
+                    <div className="alert alert-danger">{error}</div>
+                </div>
+            );
+
+            if (!quiz) return (
+                <div className="container mt-4">
+                    <div className="alert alert-warning">Quiz nie został znaleziony</div>
+                </div>
+            );
 
             return (
                 <div className="container my-5">
@@ -424,13 +440,13 @@
                                     <li className="breadcrumb-item">
                                         <a href={`/courses/${courseId}/chapters/${chapterId}`}>Dział</a>
                                     </li>
-                                    <li className="breadcrumb-item active">Nowy quiz</li>
+                                    <li className="breadcrumb-item active">Edycja quizu</li>
                                 </ol>
                             </nav>
 
                             <div className="card">
                                 <div className="card-header">
-                                    <h2 className="text-center mb-0">Tworzenie nowego quizu</h2>
+                                    <h2 className="text-center mb-0">Edycja quizu</h2>
                                 </div>
                                 <div className="card-body">
                                     {error && (
@@ -452,8 +468,8 @@
                                             <input
                                                 type="text"
                                                 className={`form-control ${validation.title ? 'is-invalid' : ''}`}
-                                                value={formData.title}
-                                                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                                value={quiz.title}
+                                                onChange={(e) => setQuiz({ ...quiz, title: e.target.value })}
                                                 placeholder="Wprowadź tytuł quizu"
                                                 required
                                             />
@@ -466,29 +482,14 @@
                                             <label className="form-label">Opis quizu:</label>
                                             <textarea
                                                 className="form-control quiz-description"
-                                                value={formData.description}
-                                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                                value={quiz.quiz?.description || ''}
+                                                onChange={(e) => setQuiz({
+                                                    ...quiz,
+                                                    quiz: { ...quiz.quiz, description: e.target.value }
+                                                })}
                                                 placeholder="Wprowadź opis quizu (opcjonalnie)"
                                                 rows="3"
                                             />
-                                        </div>
-
-                                        <div className="mb-4">
-                                            <label className="form-label">Kolejność:</label>
-                                            <input
-                                                type="number"
-                                                className={`form-control ${validation.order ? 'is-invalid' : ''}`}
-                                                value={formData.order}
-                                                onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) })}
-                                                min="1"
-                                                required
-                                            />
-                                            <small className="text-muted">
-                                                Określa kolejność wyświetlania strony w dziale.
-                                                {existingOrders.length > 0 && (
-                                                    <span> Zajęte pozycje: {existingOrders.sort((a, b) => a - b).join(', ')}</span>
-                                                )}
-                                            </small>
                                         </div>
 
                                         <div className="questions mb-4">
@@ -507,7 +508,7 @@
                                                 <div className="alert alert-danger">{validation.questions}</div>
                                             )}
 
-                                            {formData.questions.map((question, index) => (
+                                            {quiz.quiz?.questions?.map((question, index) => (
                                                 <QuestionForm
                                                     key={index}
                                                     question={question}
@@ -529,9 +530,9 @@
                                                 {loading ? (
                                                     <>
                                                         <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                                        Tworzenie...
+                                                        Zapisywanie...
                                                     </>
-                                                ) : 'Utwórz quiz'}
+                                                ) : 'Zapisz zmiany'}
                                             </button>
                                             <a
                                                 href={`/courses/${courseId}/chapters/${chapterId}`}
@@ -550,7 +551,7 @@
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<CreateQuiz />);
+        root.render(<EditQuiz />);
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>

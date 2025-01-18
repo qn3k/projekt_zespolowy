@@ -28,6 +28,9 @@
                                     <li><a class="dropdown-item" href="{% url 'my_courses' %}">Moje kursy</a></li>
                                     <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
                                     <li><a class="dropdown-item" href="{% url 'profile' %}">Mój profil</a></li>
+                                    {% if user.is_superuser %}
+                                    <li><a class="dropdown-item" href="{% url 'technology_management' %}">Dodaj technogie</a></li>   
+                                    {% endif %}
                                     <li>                                
                                         <form method="post" action="{% url 'auth-logout' %}" class="d-inline" id="logout-form">
                                         {% csrf_token %}

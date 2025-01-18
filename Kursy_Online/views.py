@@ -240,6 +240,10 @@ def moderator_required(view_func):
             return redirect('home')
     return _wrapped_view
 
+def profile(self, request):
+    serializer = UserSerializer(request.user, context={'request': request})
+    return Response(serializer.data)
+
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
@@ -567,7 +571,8 @@ class CourseViewSet(viewsets.ModelViewSet):
         reviews = CourseReview.objects.filter(course=course)
         serializer = CourseReviewSerializer(reviews, many=True)
         return Response(serializer.data)
-    @action(detail=True, methods=['GET'])
+    
+    '''@action(detail=True, methods=['GET'])
     def progress(self, request, pk=None):
         course = self.get_object()
         user_progress = UserProgress.objects.filter(
@@ -591,7 +596,7 @@ class CourseViewSet(viewsets.ModelViewSet):
             'completed_pages': completed_pages,
             'progress_percentage': (completed_pages / total_pages * 100) if total_pages > 0 else 0,
             'pages_progress': pages_progress
-        })
+        })'''
 
 class ChapterViewSet(viewsets.ModelViewSet):
     serializer_class = ChapterSerializer
@@ -793,10 +798,53 @@ class PageViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def update_content(self, request, pk=None):
         page = self.get_object()
+        print(f"Updating content for page type: {page.type}")  # Debug log
+        print(f"Received data: {request.data}") 
         if page.type == 'CONTENT':
             serializer = ContentPageSerializer(page.content_page, data=request.data)
-        elif page.type == 'QUIZ':
-            serializer = QuizSerializer(page.quiz, data=request.data)
+
+        if page.type == 'QUIZ':
+            try:
+                quiz = page.quiz
+                print(f"Found quiz: {quiz.id}")
+                
+                serializer = QuizSerializer(quiz, data=request.data)
+                print(f"Created serializer, checking validity...")
+                
+                if serializer.is_valid():
+                    print("Serializer is valid, saving...")
+                    serializer.save()
+                    print("Save completed successfully")
+                    return Response(serializer.data)
+                else:
+                    print(f"Serializer errors: {serializer.errors}")
+                    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            except Quiz.DoesNotExist:
+                print("Quiz not found for this page")
+                return Response(
+                    {'error': 'Quiz not found for this page'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            except Exception as e:
+                print(f"Error processing quiz update: {str(e)}")
+                return Response(
+                    {'error': str(e)}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+                return Response(
+                    {'error': 'Unsupported page type'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+    
+            except Exception as e:
+                print(f"Unexpected error in update_content: {str(e)}")
+                return Response(
+                    {'error': str(e)}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
         elif page.type == 'CODING':
             serializer = CodingExerciseSerializer(page.coding_exercise, data=request.data)
         else:
@@ -863,7 +911,6 @@ class PageViewSet(viewsets.ModelViewSet):
 
         return Response(results)
 
-
 @api_view(['GET'])
 def verify_email(request):
     code = request.GET.get('code')
@@ -894,7 +941,6 @@ class PaymentViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        """Zwraca płatności danego użytkownika lub wszystkie dla admina"""
         if self.request.user.is_staff:
             return Payment.objects.all()
         return Payment.objects.filter(user=self.request.user)
@@ -902,7 +948,10 @@ class PaymentViewSet(viewsets.ViewSet):
     def get_permissions(self):
         if self.action == 'create_payment':
             return [IsAuthenticated()]
-        return [IsAuthenticated()]
+        if self.action == 'create_top_up':
+            return [IsAuthenticated()]
+        return [AllowAny()]
+    
 
     @action(detail=False, methods=['POST'], url_path='create/(?P<course_id>[^/.]+)')
     def create_payment(self, request, course_id=None):
@@ -968,6 +1017,50 @@ class PaymentViewSet(viewsets.ViewSet):
             return Response({'error': 'Płatność nie została znaleziona'}, status=404)
         except Exception as e:
             return Response({'error': str(e)}, status=400)
+
+    @action(detail=False, methods=['POST'], url_path='create-top-up')
+    def create_top_up(self, request):
+        try:
+            amount = float(request.data.get('amount', 0))
+            
+            if amount < 10 or amount > 1000:
+                raise ValueError("Amount must be between 10 and 1000 PLN")
+                
+            intent = stripe.PaymentIntent.create(
+                amount=int(amount * 100),  
+                currency='pln',
+                payment_method_types=['card'],
+                metadata={'user_id': request.user.id, 'type': 'top_up'}
+            )
+            
+            return Response({
+                'clientSecret': intent.client_secret
+            })
+        except (ValueError, TypeError) as e:
+            return Response({
+                'error': str(e)
+            }, status=400)
+    
+    @action(detail=False, methods=['POST'], url_path='confirm-top-up')
+    def confirm_top_up(self, request):
+        try:
+            payment_intent_id = request.data.get('payment_intent_id')
+            amount = float(request.data.get('amount', 0))
+
+            payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            
+            if payment_intent.status != 'succeeded':
+                return Response({'error': 'Payment not successful'}, status=400)
+            
+            request.user.balance += amount
+            request.user.save()
+
+            return Response({
+                'message': f'Successfully added {amount} PLN to your account',
+                'new_balance': request.user.balance
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=400) 
 
 class PayoutHistoryView(APIView):
     permission_classes = [IsAuthenticated]
@@ -1220,32 +1313,14 @@ def get_balance(request):
         return Response({
             'balance': 0.0
         })
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def create_top_up_intent(request):
-    try:
-        amount = float(request.data.get('amount', 0))
-        payment_method = request.data.get('payment_method')
-        
-        if amount < 10 or amount > 1000:
-            raise ValueError("Amount must be between 10 and 1000 PLN")
-            
-        intent = stripe.PaymentIntent.create(
-            amount=int(amount * 100),  
-            currency='pln',
-            payment_method_types=['card'],
-            metadata={'user_id': request.user.id, 'type': 'top_up'}
-        )
-        
-        return Response({
-            'clientSecret': intent.client_secret
-        })
-    except (ValueError, TypeError) as e:
-        return Response({
-            'error': str(e)
-        }, status=400)
     
+@login_required
+def add_balance_view(request):
+    context = {
+        'stripe_publishable_key': settings.STRIPE_PK
+    }
+    return render(request, 'add_balance.html', context)
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_available_moderators(request):
@@ -1426,6 +1501,85 @@ def create_quiz_view(request, course_id, chapter_id):
         'chapter_id': chapter_id
     })
 
+@login_required
+def edit_quiz_view(request, course_id, chapter_id, page_id):
+    try:
+        page = Page.objects.get(
+            id=page_id,
+            chapter_id=chapter_id,
+            chapter__course_id=course_id
+        )
+        course = page.chapter.course
+
+        if not (course.instructor == request.user or request.user in course.moderators.all()):
+            messages.error(request, 'Nie masz uprawnień do edycji tej strony.')
+            return redirect('course_detail', course_id=course_id)
+        
+        if page.type != 'QUIZ':
+            messages.error(request, 'Ta strona nie jest quizem.')
+            return redirect('chapter_detail', course_id=course_id, chapter_id=chapter_id)
+            
+        if not hasattr(page, 'quiz'):
+            messages.error(request, 'Quiz nie został znaleziony.')
+            return redirect('chapter_detail', course_id=course_id, chapter_id=chapter_id)
+        
+        return render(request, 'edit_quiz.html', {
+            'title': f'Edycja quizu - {page.title}',
+            'course_id': course_id,
+            'chapter_id': chapter_id,
+            'page_id': page_id
+        })
+        
+    except Page.DoesNotExist:
+        messages.error(request, 'Strona nie została znaleziona.')
+        return redirect('course_detail', course_id=course_id)
+
+@action(detail=True, methods=['PUT', 'PATCH'])
+def update_quiz(self, request, course_pk=None, chapter_pk=None, pk=None):
+    page = self.get_object()
+    if page.type != 'QUIZ':
+        return Response(
+            {'error': 'This page is not a quiz'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        with transaction.atomic():
+
+            page_data = {
+                'title': request.data.get('title'),
+                'order': request.data.get('order', page.order)
+            }
+            page_serializer = PageSerializer(page, data=page_data, partial=True)
+            if page_serializer.is_valid():
+                page_serializer.save()
+
+            quiz_data = request.data.get('quiz', {})
+            quiz = page.quiz
+            quiz.description = quiz_data.get('description', '')
+            quiz.save()
+
+            quiz.questions.all().delete()  
+            for q_data in quiz_data.get('questions', []):
+                question = QuizQuestion.objects.create(
+                    quiz=quiz,
+                    question=q_data['question'],
+                    order=q_data.get('order', 1)
+                )
+                for a_data in q_data.get('answers', []):
+                    QuizAnswer.objects.create(
+                        question=question,
+                        answer=a_data['answer'],
+                        is_correct=a_data.get('is_correct', False)
+                    )
+
+            return Response(PageSerializer(page).data)
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
 class QuizViewSet(viewsets.ModelViewSet):
     serializer_class = QuizSerializer
 
@@ -1491,3 +1645,29 @@ class LoginHistoryView(APIView):
             login_history = LoginHistory.objects.filter(user=request.user).order_by('-timestamp')
         serializer = LoginHistorySerializer(login_history, many=True)
         return Response(serializer.data)
+    
+@login_required
+def rating_view(request, course_id):
+    try:
+        course_purchased = Payment.objects.filter(
+            user=request.user, 
+            course_id=course_id, 
+            status='ACCEPTED'
+        ).exists()
+
+        already_reviewed = CourseReview.objects.filter(
+            user=request.user, 
+            course_id=course_id
+        ).exists()
+
+        if not course_purchased:
+            messages.error(request, 'Musisz kupić kurs, aby móc go ocenić.')
+            return redirect('course_detail', course_id=course_id)
+
+        if already_reviewed:
+            messages.error(request, 'Już oceniłeś ten kurs.')
+            return redirect('course_detail', course_id=course_id)
+
+        return render(request, 'rating.html', {'course_id': course_id})
+    except Course.DoesNotExist:
+        raise Http404("Kurs nie istnieje")

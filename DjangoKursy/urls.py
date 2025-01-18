@@ -24,7 +24,7 @@ from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view,
     CourseViewSet, ChapterViewSet, PageViewSet, password_reset_request_view, password_reset_confirm_view,create_course,technology_management_view, \
     PaymentViewSet, TechnologyViewSet, course_detail_view, create_chapter_view, profile_view, get_balance, get_available_moderators,    \
     my_courses_view, chapter_detail_view, create_chapter_page, manage_media_view, edit_chapter_page_view, page_detail_view, LoginHistoryView, ContentImageViewSet, ContentVideoViewSet, \
-    quiz_page_detail_view, create_quiz_view, payment_view, edit_quiz_view, rating_view, add_balance_view
+    quiz_page_detail_view, create_quiz_view, payment_view, edit_quiz_view, rating_view, add_balance_view 
 
 
 router = DefaultRouter()
@@ -57,6 +57,7 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/', include(pages_router.urls)),
     path('api/users/', get_available_moderators, name='available-moderators'),
+    path('api/payments/confirm/', PaymentViewSet.as_view({'post': 'confirm_payment'}), name='confirm_payment'),
     path('login/', login_view, name='login'),
     path('logout/', AuthViewSet.as_view({'post': 'logout'}), name='auth-logout'),
     path('home/', home_view, name='home'),

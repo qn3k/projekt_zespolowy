@@ -994,29 +994,57 @@ class PaymentViewSet(viewsets.ViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
-    @action(detail=False, methods=['POST'], url_path='confirm/(?P<payment_intent_id>[^/.]+)')
-    def confirm_payment(self, request, *args, **kwargs):
-        stripe_payment_id = kwargs.get('payment_intent_id')
-        try:
-            payment = Payment.objects.get(stripe_payment_id=stripe_payment_id)
+    @api_view(['GET'])
+    def confirm_payment(request):
+        payment_intent_id = request.GET.get('payment_intent')
 
-            # Zmień status płatności na zaakceptowany
+        if not payment_intent_id:
+            return Response({
+                'error': 'Brak identyfikatora płatności',
+                'redirect_url': settings.FRONTEND_URL + '/payment-error'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        stripe.api_key = settings.STRIPE_SK
+
+        try:
+            payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            
+            if payment_intent.status != 'succeeded':
+                return Response({
+                    'error': 'Płatność nie została zatwierdzona',
+                    'redirect_url': settings.FRONTEND_URL + '/payment-error'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                payment = Payment.objects.get(stripe_payment_id=payment_intent_id)
+            except Payment.DoesNotExist:
+                return Response({
+                    'error': 'Nie znaleziono płatności',
+                    'redirect_url': settings.FRONTEND_URL + '/payment-error'
+                }, status=status.HTTP_404_NOT_FOUND)
+
             payment.status = 'ACCEPTED'
             payment.save()
 
-            # Rozdzielenie balansu pomiędzy instruktorem a administratorem
             result = distribute_balance(payment.course, payment.price)
 
             return Response({
                 'message': 'Płatność została potwierdzona',
+                'course_id': payment.course.id,
+                'redirect_url': f'{settings.FRONTEND_URL}/courses/{payment.course.id}',
                 'instructor_balance': result['instructor_balance'],
                 'admin_balance': result['admin_balance']
             })
 
-        except Payment.DoesNotExist:
-            return Response({'error': 'Płatność nie została znaleziona'}, status=404)
+        except stripe.error.StripeError as e:
+            return Response({
+                'error': str(e),
+                'redirect_url': settings.FRONTEND_URL + '/payment-error'
+            }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response({'error': str(e)}, status=400)
+            return Response({
+                'error': 'Nieznany błąd podczas potwierdzania płatności',
+                'redirect_url': settings.FRONTEND_URL + '/payment-error'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['POST'], url_path='create-top-up')
     def create_top_up(self, request):

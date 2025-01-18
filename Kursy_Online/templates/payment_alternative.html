@@ -41,17 +41,15 @@
             const [elements, setElements] = React.useState(null);
 
             React.useEffect(() => {
-                // Initialize Stripe
                 const stripeInstance = Stripe('{{ stripe_publishable_key }}');
                 setStripe(stripeInstance);
 
-                // Extract course ID from URL
                 const courseId = window.location.pathname.split('/')[2];
                 
                 const fetchCourseData = async () => {
                     try {
                         const response = await fetch(`/api/courses/${courseId}/`);
-                        if (!response.ok) throw new Error('Failed to fetch course data');
+                        if (!response.ok) throw new Error('Nie udało się pobrać danych kursu');
                         
                         const courseData = await response.json();
                         setPaymentData(prev => ({
@@ -60,7 +58,6 @@
                             courseTitle: courseData.title
                         }));
 
-                        // Initialize Stripe Elements
                         const elementsInstance = stripeInstance.elements();
                         const cardElement = elementsInstance.create('card');
                         cardElement.mount('#card-element');
@@ -71,14 +68,16 @@
                 };
 
                 fetchCourseData();
-            }, []);
 
-            const handleMethodChange = (e) => {
-                setPaymentData(prev => ({
-                    ...prev,
-                    method: e.target.value
-                }));
-            };
+                const urlParams = new URLSearchParams(window.location.search);
+                const paymentIntentId = urlParams.get('payment_intent');
+                const clientSecret = urlParams.get('payment_intent_client_secret');
+                const redirectStatus = urlParams.get('redirect_status');
+
+                if (paymentIntentId && clientSecret && redirectStatus === 'succeeded') {
+                    confirmPayment(paymentIntentId);
+                }
+            }, []);
 
             const getCSRFToken = () => {
                 const cookies = document.cookie.split(';');
@@ -87,6 +86,33 @@
                     if (name === 'csrftoken') return value;
                 }
                 return '';
+            };
+
+            const confirmPayment = async (paymentIntentId) => {
+                try {
+                    const response = await fetch(`/api/payments/confirm/?payment_intent=${paymentIntentId}`, {
+                        method: 'GET',
+                        headers: {
+                            'X-CSRFToken': getCSRFToken()
+                        }
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        setMessage('Płatność została potwierdzona. Przekierowywanie...');
+                        setTimeout(() => {
+                            window.location.href = data.redirect_url;
+                        }, 2000);
+                    } else {
+                        setError(data.error);
+                        setTimeout(() => {
+                            window.location.href = data.redirect_url;
+                        }, 2000);
+                    }
+                } catch (err) {
+                    setError('Błąd podczas potwierdzania płatności');
+                }
             };
 
             const handleSubmit = async (e) => {
@@ -115,28 +141,21 @@
 
                     const data = await response.json();
                     
-                    if (paymentData.method === 'CARD' && data.clientSecret) {
-                        const { error } = await stripe.confirmCardPayment(data.clientSecret, {
-                            payment_method: {
-                                card: elements.getElement('card'),
-                                billing_details: {
-                                    name: paymentData.cardholderName,
-                                },
+                    const { error } = await stripe.confirmCardPayment(data.clientSecret, {
+                        payment_method: {
+                            card: elements.getElement('card'),
+                            billing_details: {
+                                name: paymentData.cardholderName,
                             },
-                        });
+                        },
+                        redirect: 'if_required'
+                    });
 
-                        if (error) {
-                            throw new Error(error.message);
-                        }
-
-                        setMessage('Płatność zakończona sukcesem! Przekierowywanie...');
-                        setTimeout(() => {
-                            window.location.href = `/courses/${courseId}`;
-                        }, 2000);
-                    } else if (paymentData.method === 'PAYPAL') {
-                        // Handle PayPal payment
-                        window.location.href = data.paypalUrl;
+                    if (error) {
+                        throw new Error(error.message);
                     }
+                    
+                    setMessage('Płatność w toku...');
                 } catch (err) {
                     setError(err.message);
                 } finally {
@@ -179,8 +198,6 @@
                                                         id="card"
                                                         name="method"
                                                         value="CARD"
-                                                        checked={paymentData.method === 'CARD'}
-                                                        onChange={handleMethodChange}
                                                         className="form-check-input"
                                                     />
                                                     <label className="form-check-label" htmlFor="card">

@@ -153,8 +153,8 @@ EMAIL_HOST_USER = 'kapipvp@gmail.com'
 EMAIL_HOST_PASSWORD = 'uevr xheg aiua bmmt'
 
 STRIPE_WH = 'stripewh'
-STRIPE_PK = 'pk_test_51QddGJBhnqZWblmv24AMUrNzIYmxGHPEXIwnjLivp0ItF0OwBMX07gEbwA57LltZFLJQQ7K2e6br0JRPn6zxYgFm001rRYPkFn'
-STRIPE_SK = 'sk_test_51QddGJBhnqZWblmvGsyQZ4u2A2B8ifE2EWNhWOuRfWATQOVhi7O8hmqaCe8sYBxoOBe1bAlUXyIrwwnTDC4bdgeA006l3zzBDA'
+STRIPE_PK = 'x'
+STRIPE_SK = 'x'
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / "Kursy_Online/static"]

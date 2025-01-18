@@ -23,7 +23,7 @@ from rest_framework.routers import DefaultRouter
 from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view, PayoutHistoryView, register_view, activate_view,\
     CourseViewSet, ChapterViewSet, PageViewSet, password_reset_request_view, password_reset_confirm_view,create_course,technology_management_view, \
     PaymentViewSet, TechnologyViewSet, course_detail_view, create_chapter_view, profile_view, get_balance, get_available_moderators,    \
-    my_courses_view, chapter_detail_view, create_chapter_page, manage_media_view, edit_chapter_page_view, page_detail_view, ContentImageViewSet, ContentVideoViewSet, \
+    my_courses_view, chapter_detail_view, create_chapter_page, manage_media_view, edit_chapter_page_view, page_detail_view, LoginHistoryView, ContentImageViewSet, ContentVideoViewSet, \
     quiz_page_detail_view, create_quiz_view, payment_view
 
 
@@ -81,6 +81,7 @@ urlpatterns = [
     path('my-courses/', my_courses_view, name='my_courses'),
     path('api/auth/balance/', get_balance, name='get-balance'),
     path('api/payout-history/', PayoutHistoryView.as_view(), name='payout-history'),
+    path('api/login_history/', LoginHistoryView.as_view(), name='login_history'),
     path('api/payments/create/<int:course_id>/', PaymentViewSet.as_view({'post': 'create_payment'}), name='create-payment'),
     path('technologies/', technology_management_view, name='technology_management'),
     path('reset-password-confirm/<uidb64>/<token>/', password_reset_confirm_view, name='password_reset_confirm')

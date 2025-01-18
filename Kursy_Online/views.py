@@ -31,7 +31,7 @@ from .serializers import UserRegistrationSerializer, PayoutHistorySerializer, Us
     PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, \
      TestCaseSerializer,ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
     ContentImageCreateSerializer, ContentVideoCreateSerializer, CourseReviewSerializer, PublicCourseSerializer, \
-    TechnologySerializer, PaymentSerializer
+    TechnologySerializer, LoginHistorySerializer, PaymentSerializer
 from django.core.mail import EmailMessage
 import stripe
 
@@ -137,17 +137,17 @@ class AuthViewSet(viewsets.ViewSet):
         password = request.data.get('password')
         user = authenticate(username=username, password=password)
 
+        LoginHistory.objects.create(
+            user=user if user else None,
+            ip_address=request.META.get('REMOTE_ADDR'),
+            device_info=request.META.get('HTTP_USER_AGENT', ''),
+            successful=bool(user)
+        )
+
         if not user:
             return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
         login(request, user)
-
-        LoginHistory.objects.create(
-            user=user,
-            ip_address=request.META.get('REMOTE_ADDR'),
-            device_info=request.META.get('HTTP_USER_AGENT', ''),
-            successful=True
-        )
 
         return Response({ 'message': 'Login successful',  'user': UserSerializer(user).data  })
 
@@ -1478,3 +1478,16 @@ def payment_view(request, course_id):
         return render(request, 'payment.html', context)
     except Course.DoesNotExist:
         raise Http404("Kurs nie istnieje")
+
+class LoginHistoryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.is_superuser:
+            # Admin widzi logowania wszystkich użytkowników
+            login_history = LoginHistory.objects.all().order_by('-timestamp')
+        else:
+            # Zwykły użytkownik widzi tylko swoje logowania
+            login_history = LoginHistory.objects.filter(user=request.user).order_by('-timestamp')
+        serializer = LoginHistorySerializer(login_history, many=True)
+        return Response(serializer.data)

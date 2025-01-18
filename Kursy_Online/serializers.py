@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from .models import Course, LoginHistory, Technology, Course, Chapter, Page, PayoutHistory, ContentPage, ContentImage, ContentVideo, Quiz, QuizQuestion, QuizAnswer, Payment, CodingExercise, TestCase, CourseReview
+from .models import LoginHistory, Technology, Course, Chapter, Page, PayoutHistory, ContentPage, ContentImage, ContentVideo, Quiz, QuizQuestion, QuizAnswer, Payment, CodingExercise, TestCase, CourseReview
 
 User = get_user_model()
 
@@ -291,3 +291,8 @@ class ContentVideoCreateSerializer(serializers.ModelSerializer):
 class CodeSubmissionSerializer(serializers.Serializer):
     code = serializers.CharField(required=True)
     language = serializers.ChoiceField(choices=['python'], required=True)
+
+class LoginHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LoginHistory
+        fields = ['ip_address', 'device_info', 'timestamp', 'successful']

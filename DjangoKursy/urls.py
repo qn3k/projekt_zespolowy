@@ -24,8 +24,7 @@ from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view,
     CourseViewSet, ChapterViewSet, PageViewSet, password_reset_request_view, password_reset_confirm_view,create_course,technology_management_view, \
     PaymentViewSet, TechnologyViewSet, course_detail_view, create_chapter_view, profile_view, get_balance, get_available_moderators,    \
     my_courses_view, chapter_detail_view, create_chapter_page, manage_media_view, edit_chapter_page_view, page_detail_view, LoginHistoryView, ContentImageViewSet, ContentVideoViewSet, \
-    quiz_page_detail_view, create_quiz_view, payment_view, edit_quiz_view, rating_view, add_balance_view 
-
+    quiz_page_detail_view, create_quiz_view, payment_view, edit_quiz_view, rating_view, add_balance_view, python_interpreter, runcode
 
 router = DefaultRouter()
 router.register(r'auth', AuthViewSet, basename='auth')
@@ -87,5 +86,7 @@ urlpatterns = [
     path('api/login_history/', LoginHistoryView.as_view(), name='login_history'),
     path('api/payments/create/<int:course_id>/', PaymentViewSet.as_view({'post': 'create_payment'}), name='create-payment'),
     path('technologies/', technology_management_view, name='technology_management'),
-    path('reset-password-confirm/<uidb64>/<token>/', password_reset_confirm_view, name='password_reset_confirm')
+    path('reset-password-confirm/<uidb64>/<token>/', password_reset_confirm_view, name='password_reset_confirm'),
+    path('python-interpreter/', python_interpreter, name='python_interpreter'),
+    path('runcode/', runcode, name='runcode')
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

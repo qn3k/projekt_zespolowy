@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Python Interpreter</title>
+</head>
+<body>
+    <h1>Python Interpreter</h1>
+    <form method="post" action="/runcode/">
+        {% csrf_token %}
+        <textarea name="codearea" cols="80" rows="20" placeholder="Enter Python code here"></textarea><br>
+        <button type="submit">Run Code</button>
+    </form>
+    <h2>Output:</h2>
+    <pre>{{ output }}</pre>
+</body>
+</html>

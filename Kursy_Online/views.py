@@ -1,5 +1,6 @@
 from django.contrib.auth import login, logout, authenticate
 from django.shortcuts import render, redirect
+import traceback
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.contrib.auth.password_validation import validate_password
@@ -11,7 +12,9 @@ from django.utils.crypto import get_random_string
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils import timezone
-from django.http import Http404, HttpResponseForbidden
+from django.http import Http404, HttpResponseForbidden, HttpResponse
+from io import StringIO
+from contextlib import redirect_stdout
 from functools import wraps
 from rest_framework import permissions
 from rest_framework import viewsets, status
@@ -21,7 +24,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
-from django.db.models import Max,Min, Avg, Count
+from django.db.models import Max,Min, Avg, Count, Avg, Q
 from django.db import models, transaction
 from .code_execution import CodeExecutionService
 from .utils import distribute_balance
@@ -111,14 +114,14 @@ class AuthViewSet(viewsets.ViewSet):
                 user = serializer.save()
                 user.is_active = False
                 user.save()
-
+                # Generowanie kodu weryfikacyjnego
                 code = VerificationCode.objects.create(
                     user=user,
                     code=get_random_string(32),
                     purpose='registration',
                     expires_at=timezone.now() + timezone.timedelta(days=1)
                 )
-
+                # Wysyłka e-maila z kodem
                 verification_url = f"{request.build_absolute_uri('/api/verify-email/')}?code={code.code}"
                 send_mail( 'Verify your email',f'Click here to verify your email: {verification_url}', settings.EMAIL_HOST_USER,[user.email],fail_silently=False,    )
 
@@ -137,6 +140,7 @@ class AuthViewSet(viewsets.ViewSet):
         password = request.data.get('password')
         user = authenticate(username=username, password=password)
 
+        # Tworzenie wpisu w historii logowań
         LoginHistory.objects.create(
             user=user if user else None,
             ip_address=request.META.get('REMOTE_ADDR'),
@@ -951,32 +955,34 @@ class PaymentViewSet(viewsets.ViewSet):
         if self.action == 'create_top_up':
             return [IsAuthenticated()]
         return [AllowAny()]
-    
 
     @action(detail=False, methods=['POST'], url_path='create/(?P<course_id>[^/.]+)')
     def create_payment(self, request, course_id=None):
+        # Ustawienie klucza API Stripe.
         stripe.api_key = settings.STRIPE_SK
         try:
+            # Pobranie kursu na podstawie ID.
             course = Course.objects.get(id=course_id)
-            method = request.data.get('method', 'PAYPAL')
 
+            # Sprawdzenie, czy użytkownik już zapłacił za kurs.
             if Payment.objects.filter(user=request.user, course=course, status='ACCEPTED').exists():
                 return Response({'error': 'Już dokonałeś płatności za ten kurs'}, status=400)
 
-            payment = Payment.objects.filter(user=request.user, course=course, status='PENDING').first()
-            
+            # Utworzenie płatności w Stripe.
             intent = stripe.PaymentIntent.create(
                 amount=int(course.price * 100),
-                currency='pln',
-                payment_method_types=['card', 'paypal'],
-                metadata={'course_id': course.id, 'user_id': request.user.id}
+                currency='pln',  # Waluta.
+                payment_method_types=['card', 'paypal'],  # Obsługiwane metody płatności.
+                metadata={'course_id': course.id, 'user_id': request.user.id} 
             )
 
+            # Aktualizacja lub utworzenie płatności w bazie danych.
+            payment = Payment.objects.filter(user=request.user, course=course, status='PENDING').first()
             if payment:
                 payment.stripe_payment_id = intent.id
                 payment.save()
             else:
-                payment = Payment.objects.create(
+                Payment.objects.create(
                     user=request.user,
                     course=course,
                     price=course.price,
@@ -984,14 +990,17 @@ class PaymentViewSet(viewsets.ViewSet):
                     status='PENDING'
                 )
 
+            # Zwrócenie danych potrzebnych do finalizacji płatności.
             return Response({
                 'clientSecret': intent.client_secret,
                 'publicKey': settings.STRIPE_PK
             })
 
         except Course.DoesNotExist:
+            # Obsługa błędu, gdy kurs nie istnieje.
             return Response({'error': 'Wystąpił błąd ze znalezieniem kursu.'}, status=404)
         except Exception as e:
+            # Obsługa innych błędów.
             return Response({'error': str(e)}, status=400)
 
     @api_view(['GET'])
@@ -1699,3 +1708,25 @@ def rating_view(request, course_id):
         return render(request, 'rating.html', {'course_id': course_id})
     except Course.DoesNotExist:
         raise Http404("Kurs nie istnieje")
+
+def execute_code(code):
+    try:
+        # Capture standard output in a buffer
+        output_buffer = StringIO()
+        with redirect_stdout(output_buffer):
+            exec(code)
+        output = output_buffer.getvalue()
+    except Exception as e:
+        # Provide detailed error information
+        output = f"Error: {str(e)}\n{traceback.format_exc()}"
+    return output
+
+def python_interpreter(request):
+    return render(request, 'python_interpreter.html')
+
+def runcode(request):
+    if request.method == "POST":
+        codeareadata = request.POST['codearea']
+        output = execute_code(codeareadata)
+        return render(request, 'python_interpreter.html', {"code": codeareadata, "output": output})
+    return HttpResponse("Method not allowed", status=405)

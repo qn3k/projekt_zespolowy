@@ -1,6 +1,11 @@
 from django.contrib.auth import login, logout, authenticate
 from django.shortcuts import render, redirect
 import traceback
+import subprocess
+import shutil
+import tempfile
+import os
+import json
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.contrib.auth.password_validation import validate_password
@@ -12,7 +17,7 @@ from django.utils.crypto import get_random_string
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils import timezone
-from django.http import Http404, HttpResponseForbidden, HttpResponse
+from django.http import Http404, HttpResponseForbidden, HttpResponse, JsonResponse
 from io import StringIO
 from contextlib import redirect_stdout
 from functools import wraps
@@ -1709,24 +1714,177 @@ def rating_view(request, course_id):
     except Course.DoesNotExist:
         raise Http404("Kurs nie istnieje")
 
-def execute_code(code):
+def get_json_body(request):
+    """Pomocnicza funkcja do odczytu JSON z request.body."""
     try:
-        # Capture standard output in a buffer
-        output_buffer = StringIO()
-        with redirect_stdout(output_buffer):
-            exec(code)
-        output = output_buffer.getvalue()
+        body_str = request.body.decode('utf-8')
+        return json.loads(body_str)
+    except json.JSONDecodeError:
+        raise ValueError('Nieprawidłowy format JSON.')
+
+def run_code(request, file_extension, commands, extra_options=None):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method. Use POST.'})
+
+    try:
+        if request.content_type == 'application/json':
+            data = get_json_body(request)  # Funkcja pomocnicza
+            code = data.get('code', '')
+        else:
+            code = request.POST.get('code', '')
+
+        if not code.strip():
+            return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
+
+        # Logika plików tymczasowych
+        temp_file = tempfile.NamedTemporaryFile(
+            suffix=file_extension, delete=False, dir='.', mode='w', encoding='utf-8'
+        )
+        temp_file.write(code)
+        temp_file.close()
+
+        # Przetwarzanie komend i uruchamianie
+        binary_file = extra_options.get('binary_file') if extra_options else None
+        if extra_options and extra_options.get('compile_needed'):
+            compile_command = extra_options.get('compile_command')
+            compile_process = subprocess.run(compile_command + [temp_file.name], capture_output=True, text=True)
+            if compile_process.returncode != 0:
+                raise RuntimeError(f"Kompilacja nieudana: {compile_process.stderr}")
+
+        if binary_file:
+            commands.append(binary_file)
+
+        process = subprocess.run(commands, capture_output=True, text=True)
+        return JsonResponse({
+            'success': process.returncode == 0,
+            'output': process.stdout,
+            'error': process.stderr
+        })
+
     except Exception as e:
-        # Provide detailed error information
-        output = f"Error: {str(e)}\n{traceback.format_exc()}"
-    return output
+        return JsonResponse({'success': False, 'error': f"Unexpected error: {str(e)}"})
 
+    finally:
+        if os.path.exists(temp_file.name):
+            os.unlink(temp_file.name)
+        if binary_file and os.path.exists(binary_file):
+            os.unlink(binary_file)
+
+
+# Widok dla języka Python
 def python_interpreter(request):
-    return render(request, 'python_interpreter.html')
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method. Use POST.'})
 
-def runcode(request):
-    if request.method == "POST":
-        codeareadata = request.POST['codearea']
-        output = execute_code(codeareadata)
-        return render(request, 'python_interpreter.html', {"code": codeareadata, "output": output})
-    return HttpResponse("Method not allowed", status=405)
+    try:
+        # Odczyt JSON tylko raz
+        data = request.body.decode('utf-8') if request.content_type == 'application/json' else request.POST.get('code',
+                                                                                                                '')
+        if not data.strip():
+            return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
+
+        # Utwórz plik tymczasowy z kodem w Pythonie
+        with tempfile.NamedTemporaryFile(suffix='.py', delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(data)
+            temp_file_path = temp_file.name
+
+        # Uruchom kod w pliku tymczasowym przy użyciu subprocess
+        process = subprocess.run(
+            ['python', temp_file_path],
+            capture_output=True, text=True
+        )
+
+        # Usuń plik tymczasowy po wykonaniu
+        os.unlink(temp_file_path)
+
+        if process.returncode == 0:
+            return JsonResponse({'success': True, 'output': process.stdout})
+        else:
+            return JsonResponse({'success': False, 'error': process.stderr})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'Unexpected error: {str(e)}'})
+
+# Widok dla PowerShell
+def powershell_interpreter(request):
+    if request.method == 'POST':
+        code = request.POST.get('code', '')
+        if not code.strip():
+            return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
+
+        try:
+            # Znajdowanie odpowiedniego PowerShell (classic lub Core)
+            executable = shutil.which("powershell") or shutil.which("pwsh")
+            if not executable:
+                return JsonResponse({'success': False, 'error': 'PowerShell executable not found in PATH.'})
+
+            # Tworzenie pliku tymczasowego z poleceniami PowerShell
+            with tempfile.NamedTemporaryFile(suffix='.ps1', delete=False, mode='w', encoding='utf-8') as temp_file:
+                temp_file.write(code)
+                temp_file.flush()
+                temp_file_path = temp_file.name
+
+            # Uruchomienie skryptu PowerShell
+            process = subprocess.run(
+                [executable, '-ExecutionPolicy', 'Bypass', '-File', temp_file_path],
+                capture_output=True, text=True, shell=False
+            )
+
+            # Usuwanie pliku tymczasowego
+            os.unlink(temp_file_path)
+
+            if process.returncode != 0:
+                return JsonResponse({'success': False, 'error': process.stderr})
+
+            return JsonResponse({'success': True, 'output': process.stdout})
+
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+        finally:
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+
+    else:
+        return JsonResponse({'success': False, 'error': 'Invalid HTTP method. Use POST.'})
+
+
+def c_interpreter(request):
+    gcc_path = r"C:\msys64\ucrt64\bin\gcc.exe"
+    if not os.path.exists(gcc_path):
+        return JsonResponse({'success': False, 'error': 'Nie znaleziono GCC w podanej ścieżce.'})
+
+    return run_code(
+        request,
+        file_extension='.c',
+        commands=[],  # Puste, bo etap kompilacji określi plik wykonywalny
+        extra_options={
+            'compile_needed': True,
+            'compile_command': [gcc_path, '-o', 'program.exe', '-L', r"C:\msys64\ucrt64\lib"],
+            'binary_file': './program.exe'  # Nazwa wynikowego pliku wykonywalnego
+        }
+    )
+
+# Widok dla C#
+def csharp_interpreter(request):
+    return run_code(request, '.cs', ['dotnet', 'run'])
+
+
+# Widok dla języka Java
+def java_interpreter(request):
+    return run_code(
+        request,
+        file_extension='.java',
+        commands=['java', 'program'],  # Uruchomienie programu
+        extra_options={
+            'compile_needed': True,
+            'compile_command': ['javac'],
+            'binary_file': 'program.class'
+        }
+    )
+
+# Widok dla JavaScript
+def js_interpreter(request):
+    return run_code(request, '.js', ['node'])
+
+def interpreter_view(request):
+    return render(request, 'interpreter.html')

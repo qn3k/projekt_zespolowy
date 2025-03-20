@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Interpreter</title>
+</head>
+<body>
+    <h1>Code Interpreter</h1>
+    <form id="codeForm" method="post">
+        {% csrf_token %}
+        <label for="interpreter">Select Interpreter:</label>
+        <select id="interpreter" name="interpreter">
+            <option value="python">Python</option>
+            <option value="powershell">PowerShell</option>
+            <option value="c">C</option>
+            <option value="csharp">C#</option>
+            <option value="java">Java</option>
+            <option value="javascript">JavaScript</option>
+        </select>
+        <br><br>
+        <textarea name="code" id="code" placeholder="Write your code here" rows="10" cols="50"></textarea>
+        <br><br>
+        <button type="submit">Run Code</button>
+    </form>
+
+    <h2>Output:</h2>
+    <div id="output" style="border: 1px solid #ccc; padding: 10px; background-color: #f9f9f9; min-height: 50px;">
+        <!-- Wynik działania API pojawi się tutaj -->
+    </div>
+
+    <script>
+        document.getElementById('codeForm').addEventListener('submit', function (e) {
+            e.preventDefault(); // Zapobiega przeładowaniu strony
+            let formData = new FormData(this);
+            let selectedInterpreter = document.getElementById('interpreter').value;
+
+            // Mapa endpointów do API
+            let endpointMap = {
+                'powershell': '/powershell-interpreter/',
+                'c': '/c-interpreter/',
+                'csharp': '/csharp-interpreter/',
+                'java': '/java-interpreter/',
+                'javascript': '/js-interpreter/',
+                'python': '/python-interpreter/'
+            };
+
+            let url = endpointMap[selectedInterpreter];
+            fetch(url, {
+                method: 'POST',
+                body: formData,
+            })
+            .then(response => response.json())
+            .then(data => {
+                const outputDiv = document.getElementById('output');
+                if (data.success) {
+                    // Jeśli działanie kodu zakończyło się sukcesem, pokaż wyjście
+                    outputDiv.textContent = "Output:\n" + data.output;
+                    outputDiv.style.color = "green";
+                } else {
+                    // Jeśli wystąpił błąd, pokaż szczegóły błędu
+                    outputDiv.textContent = "Error:\n" + data.error;
+                    outputDiv.style.color = "red";
+                }
+            })
+            .catch(error => {
+                const outputDiv = document.getElementById('output');
+                outputDiv.textContent = "Unexpected error: " + error;
+                outputDiv.style.color = "red";
+            });
+        });
+    </script>
+</body>
+</html>

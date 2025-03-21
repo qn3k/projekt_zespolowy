@@ -1884,7 +1884,40 @@ def java_interpreter(request):
 
 # Widok dla JavaScript
 def js_interpreter(request):
-    return run_code(request, '.js', ['node'])
+    try:
+        # Upewnij się, że `node` jest dostępny
+        node_executable = shutil.which('node')
+        if not node_executable:
+            return JsonResponse(
+                {'success': False, 'error': 'Node.js executable not found in PATH. Please install Node.js.'})
+
+        # Uzyskaj kod JavaScript
+        data = get_json_body(request) if request.content_type == 'application/json' else request.POST
+        code = data.get('code', '').strip()
+        if not code:
+            return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
+
+        # Tworzenie pliku tymczasowego
+        with tempfile.NamedTemporaryFile(suffix='.js', delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(code)
+            temp_file_path = temp_file.name
+
+        # Uruchamianie kodu z użyciem subprocess
+        process = subprocess.run(
+            [node_executable, temp_file_path],
+            capture_output=True, text=True, shell=False
+        )
+
+        # Usuwanie pliku tymczasowego
+        os.unlink(temp_file_path)
+
+        if process.returncode != 0:
+            return JsonResponse({'success': False, 'error': process.stderr})
+
+        return JsonResponse({'success': True, 'output': process.stdout})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 def interpreter_view(request):
     return render(request, 'interpreter.html')

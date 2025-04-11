@@ -24,8 +24,7 @@ from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view,
     CourseViewSet, ChapterViewSet, PageViewSet, password_reset_request_view, password_reset_confirm_view,create_course,technology_management_view, \
     PaymentViewSet, TechnologyViewSet, course_detail_view, create_chapter_view, profile_view, get_balance, get_available_moderators,    \
     my_courses_view, chapter_detail_view, create_chapter_page, manage_media_view, edit_chapter_page_view, page_detail_view, LoginHistoryView, ContentImageViewSet, ContentVideoViewSet, \
-    quiz_page_detail_view, create_quiz_view, payment_view, edit_quiz_view, rating_view, add_balance_view, python_interpreter, run_code, powershell_interpreter, c_interpreter, csharp_interpreter, java_interpreter, \
-    js_interpreter, interpreter_view
+    quiz_page_detail_view, create_quiz_view, payment_view, edit_quiz_view, rating_view, add_balance_view, send_code_to_interpreter, code_form_view
 
 router = DefaultRouter()
 router.register(r'auth', AuthViewSet, basename='auth')
@@ -88,12 +87,6 @@ urlpatterns = [
     path('api/payments/create/<int:course_id>/', PaymentViewSet.as_view({'post': 'create_payment'}), name='create-payment'),
     path('technologies/', technology_management_view, name='technology_management'),
     path('reset-password-confirm/<uidb64>/<token>/', password_reset_confirm_view, name='password_reset_confirm'),
-    path('interpreter/', interpreter_view, name='interpreter'),
-    path('python-interpreter/', python_interpreter, name='python_interpreter'),
-    path('powershell-interpreter/', powershell_interpreter, name='powershell_interpreter'),
-    path('c-interpreter/', c_interpreter, name='c_interpreter'),
-    path('csharp-interpreter/', csharp_interpreter, name='csharp_interpreter'),
-    path('java-interpreter/', java_interpreter, name='java_interpreter'),
-    path('js-interpreter/', js_interpreter, name='js_interpreter'),
-    path('run-code/', run_code, name='run_code')
+    path('send-code/', send_code_to_interpreter, name='send_code'),
+    path('code-form/', code_form_view, name='code_form'),  # Ścieżka do formularza
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

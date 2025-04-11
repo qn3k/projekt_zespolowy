@@ -1,11 +1,13 @@
 from django.contrib.auth import login, logout, authenticate
 from django.shortcuts import render, redirect
+from django.http import JsonResponse
 import traceback
 import subprocess
 import shutil
 import tempfile
 import os
 import json
+import requests
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.contrib.auth.password_validation import validate_password
@@ -1722,202 +1724,66 @@ def get_json_body(request):
     except json.JSONDecodeError:
         raise ValueError('Nieprawidłowy format JSON.')
 
-def run_code(request, file_extension, commands, extra_options=None):
+def send_code_to_interpreter(request):
     if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Invalid request method. Use POST.'})
+        return JsonResponse({'success': False, 'error': 'Invalid method. Use POST.'})
 
     try:
-        if request.content_type == 'application/json':
-            data = get_json_body(request)  # Funkcja pomocnicza
-            code = data.get('code', '')
-        else:
-            code = request.POST.get('code', '')
+        # Pobranie języka i kodu od użytkownika
+        language = request.POST.get('language', '')  # Język programowania (np. "javascript", "python")
+        code = request.POST.get('code', '')  # Kod do wykonania
 
         if not code.strip():
             return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
 
-        # Logika plików tymczasowych
-        temp_file = tempfile.NamedTemporaryFile(
-            suffix=file_extension, delete=False, dir='.', mode='w', encoding='utf-8'
-        )
-        temp_file.write(code)
-        temp_file.close()
+        if not language.strip():
+            return JsonResponse({'success': False, 'error': 'Interpreter (language) nie został podany.'})
 
-        # Przetwarzanie komend i uruchamianie
-        binary_file = extra_options.get('binary_file') if extra_options else None
-        if extra_options and extra_options.get('compile_needed'):
-            compile_command = extra_options.get('compile_command')
-            compile_process = subprocess.run(compile_command + [temp_file.name], capture_output=True, text=True)
-            if compile_process.returncode != 0:
-                raise RuntimeError(f"Kompilacja nieudana: {compile_process.stderr}")
+        # Nowy adres serwera
+        server_url = "http://ddnsareshxhost.ddns.net:5000/run"
 
-        if binary_file:
-            commands.append(binary_file)
+        # Dane wysyłane do serwera (JSON, klucze: "code", "interpreter")
+        payload = {
+            "code": code,
+            "interpreter": language
+        }
 
-        process = subprocess.run(commands, capture_output=True, text=True)
-        return JsonResponse({
-            'success': process.returncode == 0,
-            'output': process.stdout,
-            'error': process.stderr
-        })
-
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': f"Unexpected error: {str(e)}"})
-
-    finally:
-        if os.path.exists(temp_file.name):
-            os.unlink(temp_file.name)
-        if binary_file and os.path.exists(binary_file):
-            os.unlink(binary_file)
-
-
-# Widok dla języka Python
-def python_interpreter(request):
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Invalid request method. Use POST.'})
-
-    try:
-        # Odczyt JSON tylko raz
-        data = request.body.decode('utf-8') if request.content_type == 'application/json' else request.POST.get('code',
-                                                                                                                '')
-        if not data.strip():
-            return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
-
-        # Utwórz plik tymczasowy z kodem w Pythonie
-        with tempfile.NamedTemporaryFile(suffix='.py', delete=False, mode='w', encoding='utf-8') as temp_file:
-            temp_file.write(data)
-            temp_file_path = temp_file.name
-
-        # Uruchom kod w pliku tymczasowym przy użyciu subprocess
-        process = subprocess.run(
-            ['python', temp_file_path],
-            capture_output=True, text=True
+        # Wysłanie żądania POST na serwer interpretujący
+        response = requests.post(
+            server_url,
+            json=payload,
+            headers={'Content-Type': 'application/json'}
         )
 
-        # Usuń plik tymczasowy po wykonaniu
-        os.unlink(temp_file_path)
-
-        if process.returncode == 0:
-            return JsonResponse({'success': True, 'output': process.stdout})
+        # Obsługa odpowiedzi z serwera
+        if response.status_code == 200:
+            server_data = response.json()
+            return JsonResponse({
+                'success': server_data.get('success', False),
+                'output': server_data.get('output', ''),
+                'error': server_data.get('error', '')
+            })
         else:
-            return JsonResponse({'success': False, 'error': process.stderr})
+            return JsonResponse({
+                'success': False,
+                'error': f"Serwer zwrócił błąd HTTP {response.status_code}: {response.text}"
+            })
+
+    except requests.exceptions.RequestException as e:
+        return JsonResponse({'success': False, 'error': f"Błąd sieciowy: {str(e)}"})
 
     except Exception as e:
-        return JsonResponse({'success': False, 'error': f'Unexpected error: {str(e)}'})
+        return JsonResponse({'success': False, 'error': f"Nieoczekiwany błąd: {str(e)}"})
 
-# Widok dla PowerShell
-def powershell_interpreter(request):
+def code_form_view(request):
+    result = None
+
     if request.method == 'POST':
-        code = request.POST.get('code', '')
-        if not code.strip():
-            return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
+        # Otrzymujemy odpowiedź jako obiekt JsonResponse
+        response = send_code_to_interpreter(request)
 
-        try:
-            # Znajdowanie odpowiedniego PowerShell (classic lub Core)
-            executable = shutil.which("powershell") or shutil.which("pwsh")
-            if not executable:
-                return JsonResponse({'success': False, 'error': 'PowerShell executable not found in PATH.'})
+        # Dekodujemy dane JSON
+        result = json.loads(response.content)
 
-            # Tworzenie pliku tymczasowego z poleceniami PowerShell
-            with tempfile.NamedTemporaryFile(suffix='.ps1', delete=False, mode='w', encoding='utf-8') as temp_file:
-                temp_file.write(code)
-                temp_file.flush()
-                temp_file_path = temp_file.name
+    return render(request, 'code_form.html', {'result': result})
 
-            # Uruchomienie skryptu PowerShell
-            process = subprocess.run(
-                [executable, '-ExecutionPolicy', 'Bypass', '-File', temp_file_path],
-                capture_output=True, text=True, shell=False
-            )
-
-            # Usuwanie pliku tymczasowego
-            os.unlink(temp_file_path)
-
-            if process.returncode != 0:
-                return JsonResponse({'success': False, 'error': process.stderr})
-
-            return JsonResponse({'success': True, 'output': process.stdout})
-
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)})
-        finally:
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
-
-    else:
-        return JsonResponse({'success': False, 'error': 'Invalid HTTP method. Use POST.'})
-
-
-def c_interpreter(request):
-    gcc_path = r"C:\msys64\ucrt64\bin\gcc.exe"
-    if not os.path.exists(gcc_path):
-        return JsonResponse({'success': False, 'error': 'Nie znaleziono GCC w podanej ścieżce.'})
-
-    return run_code(
-        request,
-        file_extension='.c',
-        commands=[],  # Puste, bo etap kompilacji określi plik wykonywalny
-        extra_options={
-            'compile_needed': True,
-            'compile_command': [gcc_path, '-o', 'program.exe', '-L', r"C:\msys64\ucrt64\lib"],
-            'binary_file': './program.exe'  # Nazwa wynikowego pliku wykonywalnego
-        }
-    )
-
-# Widok dla C#
-def csharp_interpreter(request):
-    return run_code(request, '.cs', ['dotnet', 'run'])
-
-
-# Widok dla języka Java
-def java_interpreter(request):
-    return run_code(
-        request,
-        file_extension='.java',
-        commands=['java', 'program'],  # Uruchomienie programu
-        extra_options={
-            'compile_needed': True,
-            'compile_command': ['javac'],
-            'binary_file': 'program.class'
-        }
-    )
-
-# Widok dla JavaScript
-def js_interpreter(request):
-    try:
-        # Upewnij się, że `node` jest dostępny
-        node_executable = shutil.which('node')
-        if not node_executable:
-            return JsonResponse(
-                {'success': False, 'error': 'Node.js executable not found in PATH. Please install Node.js.'})
-
-        # Uzyskaj kod JavaScript
-        data = get_json_body(request) if request.content_type == 'application/json' else request.POST
-        code = data.get('code', '').strip()
-        if not code:
-            return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
-
-        # Tworzenie pliku tymczasowego
-        with tempfile.NamedTemporaryFile(suffix='.js', delete=False, mode='w', encoding='utf-8') as temp_file:
-            temp_file.write(code)
-            temp_file_path = temp_file.name
-
-        # Uruchamianie kodu z użyciem subprocess
-        process = subprocess.run(
-            [node_executable, temp_file_path],
-            capture_output=True, text=True, shell=False
-        )
-
-        # Usuwanie pliku tymczasowego
-        os.unlink(temp_file_path)
-
-        if process.returncode != 0:
-            return JsonResponse({'success': False, 'error': process.stderr})
-
-        return JsonResponse({'success': True, 'output': process.stdout})
-
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
-
-def interpreter_view(request):
-    return render(request, 'interpreter.html')

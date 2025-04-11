@@ -1,0 +1,29 @@
+<body>
+    <h1>Run Your Code</h1>
+    <form action="/code-form/" method="post">
+        {% csrf_token %}
+
+        <label for="language">Language:</label>
+        <select name="language" id="language">
+            <option value="javascript">JavaScript</option>
+            <option value="python">Python</option>
+        </select>
+        <br><br>
+
+        <label for="code">Your Code:</label>
+        <br>
+        <textarea name="code" rows="10" cols="50" placeholder="Write your code here..."></textarea>
+        <br><br>
+
+        <button type="submit">Run Code</button>
+    </form>
+
+    {% if result %}
+        <h2>Result:</h2>
+        <pre>
+            Success: {{ result.success }}
+            Output: {{ result.output }}
+            Error: {{ result.error }}
+        </pre>
+    {% endif %}
+</body>

@@ -171,7 +171,11 @@ class CodingExercise(models.Model):
     allowed_languages = models.JSONField(default=list)
     memory_limit = models.IntegerField(default=100*1024*1024)
     time_limit = models.IntegerField(default=5000)
-
+    difficulty = models.CharField(
+        max_length=50,
+        choices=[('easy', 'Easy'), ('medium', 'Medium'), ('hard', 'Hard')],  # Przykładowe poziomy trudności
+        default='medium'
+    )
 
 class TestCase(models.Model):
     exercise = models.ForeignKey(CodingExercise, on_delete=models.CASCADE, related_name='test_cases')

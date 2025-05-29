@@ -41,7 +41,7 @@ from .serializers import UserRegistrationSerializer, PayoutHistorySerializer, Us
     PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, \
      TestCaseSerializer,ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
     ContentImageCreateSerializer, ContentVideoCreateSerializer, CourseReviewSerializer, PublicCourseSerializer, \
-    TechnologySerializer, LoginHistorySerializer, PaymentSerializer
+    TechnologySerializer, LoginHistorySerializer, PaymentSerializer, TestCase
 from django.core.mail import EmailMessage
 import stripe
 
@@ -868,59 +868,105 @@ class PageViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def submit_solution(self, request, course_pk=None, chapter_pk=None, pk=None):
+        """
+        Obsługa przesyłania rozwiązania przez użytkownika i weryfikacja wszystkich przypadków testowych.
+        """
         page = self.get_object()
         chapter = page.chapter
         course = chapter.course
+
+        # Sprawdzenie czy strona obsługuje zadania programistyczne
         if page.type != 'CODING':
             return Response(
                 {'error': 'Ta strona nie jest zadaniem programistycznym'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Pobranie zadania programistycznego
         try:
             coding_exercise = CodingExercise.objects.get(page=page)
         except CodingExercise.DoesNotExist:
             return Response(
-                {'error': 'Zadanie programistyczne nie zostało znalezione'},
+                {'error': 'Zadanie programistyczne nie zostało skonfigurowane.'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Walidacja danych użytkownika
         serializer = CodeSubmissionSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        # Pobranie kodu użytkownika
         user_code = serializer.validated_data['code']
-        test_cases = coding_exercise.test_cases.all()
 
+        # Pobranie wszystkich przypadków testowych dla zadania
+        test_cases = coding_exercise.test_cases.all()
         if not test_cases.exists():
             return Response(
-                {'error': 'Brak przypadków testowych dla tego zadania'},
+                {'error': 'Brak przypadków testowych dla tego zadania.'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Inicjalizacja klasy wykonawczej do uruchamiania kodu
         executor = CodeExecutionService()
-        results = executor.run_all_tests(
-            user_code,
-            [
-                {
-                    'input_data': test.input_data,
-                    'expected_output': test.expected_output,
-                    'is_hidden': test.is_hidden
-                }
-                for test in test_cases
-            ]
+
+        # Przygotowanie testów (ukrywanie danych dla ukrytych przypadków testowych)
+        tests_data = [
+            {
+                'input_data': test.input_data,
+                'expected_output': test.expected_output,
+                'is_hidden': test.is_hidden
+            }
+            for test in test_cases
+        ]
+
+        # Wykonanie wszystkich przypadków testowych za jednym razem
+        results = executor.run_all_tests(user_code, tests_data)
+
+        # Przetwarzanie wyników wykonania testów (ukrywanie szczegółów ukrytych testów)
+        processed_results = []
+        all_tests_passed = results['success']
+
+        for test, result in zip(tests_data, results['results']):
+            is_hidden = test['is_hidden']
+            if is_hidden:
+                processed_results.append({
+                    'input': 'ukryty przypadek testowy',
+                    'expected_output': 'ukryty',
+                    'actual_output': 'ukryty' if 'actual_output' in result else None,
+                    'success': result['success'],
+                    'error': None if result['success'] else 'Nieudane wykonanie ukrytego testu'
+                })
+            else:
+                processed_results.append({
+                    'input': test['input_data'],
+                    'expected_output': test['expected_output'],
+                    'actual_output': result.get('actual_output'),
+                    'success': result['success'],
+                    'error': result.get('error')
+                })
+
+        # Aktualizacja informacji o progresie użytkownika
+        user_progress, created = UserProgress.objects.get_or_create(
+            user=request.user,
+            page=page,
+            defaults={
+                'attempts': 0
+            }
         )
+        user_progress.attempts += 1  # Zwiększamy liczbę prób
+        if all_tests_passed:
+            user_progress.completed = True
+            user_progress.completed_at = timezone.now()
+        user_progress.save()
 
-        if results['success']:
-            UserProgress.objects.update_or_create(
-                user=request.user,
-                page=page,
-                defaults={
-                    'completed': True,
-                    'completed_at': timezone.now()
-                }
-            )
+        # Zwrot informacji o wynikach
+        return Response({
+            'success': all_tests_passed,
+            'results': processed_results,
+            'total_attempts': user_progress.attempts
+        })
 
-        return Response(results)
 
 @api_view(['GET'])
 def verify_email(request):
@@ -1156,7 +1202,7 @@ def register_view(request):
         user.is_active = False 
         user.save()
 
-        # WysyĹ‚anie e-maila aktywacyjnego
+        # Wysylanie e-maila aktywacyjnego
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
         activation_link = f"{request.build_absolute_uri('/activate/')}?uid={uid}&token={token}"
@@ -1787,3 +1833,124 @@ def code_form_view(request):
 
     return render(request, 'code_form.html', {'result': result})
 
+class AddCodingPageView(APIView):
+
+    def post(self, request, course_id, chapter_id):
+        data = request.data
+
+        # Tworzenie nowej strony typu CODING
+        page_data = {
+            "title": data.get("title"),
+            "type": "CODING",
+            "order": data.get("order"),
+        }
+
+        try:
+            page = Page.objects.create(
+                chapter_id=chapter_id,
+                **page_data
+            )
+
+            exercise_data = {
+                "description": data.get("description"),
+                "difficulty": data.get("difficulty", "medium"),
+                "initial_code": data.get("initial_code", ""),
+                "test_cases": data.get("test_cases", [])
+            }
+
+            # Tworzenie zadania programistycznego
+            serializer = CodingExerciseSerializer(data=exercise_data)
+            if serializer.is_valid():
+                serializer.save(page=page)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+def submit_solution(request, course_id, chapter_id, page_id):
+    try:
+        # Pobierz kod użytkownika i język programowanias
+        user_code = request.data.get('code', '')
+        language = request.data.get('language', 'python')  # Domyślny język to Python
+
+        # Sprawdź, czy kod nie jest pusty
+        if not user_code.strip():
+            return Response({"success": False, "error": "Kod nie może być pusty."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Pobierz powiązane przypadki testowe
+        try:
+            exercise = CodingExercise.objects.get(page_id=page_id)
+            test_cases = TestCase.objects.filter(exercise=exercise).order_by('order')
+        except CodingExercise.DoesNotExist:
+            return Response({"success": False, "error": "Zadanie nie istnieje."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Przygotowanie wyników testów
+        results = []
+        all_tests_passed = True
+
+        # Przetwarzanie każdej test_case
+        for test_case in test_cases:
+            # Przygotowanie kodu użytkownika z wejściem i oczekiwanym wyjściem
+            test_input_code = f"""
+{user_code}
+
+# Wejście dla tego przypadku testowego
+input_data = \"\"\"{test_case.input_data}\"\"\"
+
+# Oczekiwany wynik (dane dla porównania)
+expected_output = \"\"\"{test_case.expected_output}\"\"\"
+
+# Możesz tu dodać dodatkową logikę, jeśli to konieczne
+"""
+
+            # Przygotowanie payload dla interpretera
+            payload = {
+                "code": test_input_code,
+                "interpreter": language
+            }
+
+            # Wysłanie żądania POST do interpretera
+            response = requests.post(
+                "http://ddnsareshxhost.ddns.net:5000/run",
+                json=payload,
+                headers={'Content-Type': 'application/json'}
+            )
+
+            # Obsługa odpowiedzi z serwera
+            if response.status_code == 200:
+                interpreter_response = response.json()
+                test_output = interpreter_response.get('output',
+                                                       '').strip()  # Użycie wyniku zwróconego przez interpreter
+                test_result = {
+                    "input": test_case.input_data,
+                    "expected_output": test_case.expected_output,
+                    "success": test_output == test_case.expected_output.strip(),
+                    "output": test_output,
+                    "error": interpreter_response.get('error', '')
+                }
+            else:
+                test_result = {
+                    "input": test_case.input_data,
+                    "expected_output": test_case.expected_output,
+                    "success": False,
+                    "output": "",
+                    "error": f"HTTP error: {response.status_code}"
+                }
+
+            results.append(test_result)
+
+            # Jeśli jeden z testów się nie powiódł, oznacz testy jako niezaliczone
+            if not test_result["success"]:
+                all_tests_passed = False
+
+        # Zwróć odpowiedź widoku
+        return Response({
+            "success": all_tests_passed,
+            "results": results
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        # Zwróć informacje o nieoczekiwanym błędzie
+        return Response({"success": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

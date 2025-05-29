@@ -24,7 +24,7 @@ from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view,
     CourseViewSet, ChapterViewSet, PageViewSet, password_reset_request_view, password_reset_confirm_view,create_course,technology_management_view, \
     PaymentViewSet, TechnologyViewSet, course_detail_view, create_chapter_view, profile_view, get_balance, get_available_moderators,    \
     my_courses_view, chapter_detail_view, create_chapter_page, manage_media_view, edit_chapter_page_view, page_detail_view, LoginHistoryView, ContentImageViewSet, ContentVideoViewSet, \
-    quiz_page_detail_view, create_quiz_view, payment_view, edit_quiz_view, rating_view, add_balance_view, send_code_to_interpreter, code_form_view
+    quiz_page_detail_view, submit_solution, create_quiz_view, payment_view, edit_quiz_view, rating_view, add_balance_view, send_code_to_interpreter, code_form_view
 
 router = DefaultRouter()
 router.register(r'auth', AuthViewSet, basename='auth')
@@ -89,4 +89,5 @@ urlpatterns = [
     path('reset-password-confirm/<uidb64>/<token>/', password_reset_confirm_view, name='password_reset_confirm'),
     path('send-code/', send_code_to_interpreter, name='send_code'),
     path('code-form/', code_form_view, name='code_form'),  # Ścieżka do formularza
+    path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/<int:page_id>/submit-solution/', submit_solution,name='submit_solution'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

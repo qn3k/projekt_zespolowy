@@ -46,10 +46,8 @@ class CodeExecutionService:
         stdout = StringIO()
 
         try:
-
             with redirect_stdout(stdout):
                 exec(user_code, local_vars)
-
 
             if 'solution' not in local_vars:
                 return {
@@ -57,11 +55,14 @@ class CodeExecutionService:
                     'error': 'Brak funkcji solution()'
                 }
 
-
             start_time = time.time()
             result = local_vars['solution'](eval(test_input))
             execution_time = time.time() - start_time
 
+            '''print(f"DEBUG: result = '{result}' (type: {type(result)})")
+            print(f"DEBUG: expected = '{expected_output}' (type: {type(expected_output)})")
+            print(f"DEBUG: result.strip() = '{str(result).strip()}'")
+            print(f"DEBUG: expected.strip() = '{str(expected_output).strip()}'")'''
 
             if str(result).strip() == str(expected_output).strip():
                 return {
@@ -83,7 +84,7 @@ class CodeExecutionService:
                 'success': False,
                 'error': str(e),
                 'traceback': traceback.format_exc()
-            }
+            }   
 
     def run_all_tests(self, user_code: str, test_cases: List[Dict[str, str]]) -> Dict[str, Any]:
         results = []

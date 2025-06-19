@@ -273,6 +273,14 @@
                                                                     </a>
                                                                 </>
                                                             )}
+                                                            {page.type === 'CODING' && (
+                                                                    <a 
+                                                                        href={`/courses/${courseId}/chapters/${chapterId}/pages/${page.id}/editcoding`}
+                                                                        className="btn btn-sm btn-outline-secondary me-2"
+                                                                    >
+                                                                        Edytuj zadanie
+                                                                    </a>
+                                                            )}
                                                                 <button className="btn btn-sm btn-outline-danger">
                                                                     Usuń
                                                                 </button>

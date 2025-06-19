@@ -1,74 +1,198 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Code Interpreter</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'styles.css' %}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 </head>
 <body>
-    <h1>Code Interpreter</h1>
-    <form id="codeForm" method="post">
-        {% csrf_token %}
-        <label for="interpreter">Select Interpreter:</label>
-        <select id="interpreter" name="interpreter">
-            <option value="python">Python</option>
-            <option value="powershell">PowerShell</option>
-            <option value="c">C</option>
-            <option value="csharp">C#</option>
-            <option value="java">Java</option>
-            <option value="javascript">JavaScript</option>
-        </select>
-        <br><br>
-        <textarea name="code" id="code" placeholder="Write your code here" rows="10" cols="50"></textarea>
-        <br><br>
-        <button type="submit">Run Code</button>
-    </form>
+    <header>
+        {% include 'includes/navbar.html' %}
+    </header>
 
-    <h2>Output:</h2>
-    <div id="output" style="border: 1px solid #ccc; padding: 10px; background-color: #f9f9f9; min-height: 50px;">
-        <!-- Wynik działania API pojawi się tutaj -->
-    </div>
+    <div id="root"></div>
 
-    <script>
-        document.getElementById('codeForm').addEventListener('submit', function (e) {
-            e.preventDefault(); // Zapobiega przeładowaniu strony
-            let formData = new FormData(this);
-            let selectedInterpreter = document.getElementById('interpreter').value;
+    <script type="text/babel">
+        const CodeInterpreter = () => {
+            const [formData, setFormData] = React.useState({
+                interpreter: 'python',
+                code: ''
+            });
+            const [output, setOutput] = React.useState('');
+            const [loading, setLoading] = React.useState(false);
+            const [hasOutput, setHasOutput] = React.useState(false);
+            const [isError, setIsError] = React.useState(false);
 
-            // Mapa endpointów do API
-            let endpointMap = {
-                'powershell': '/powershell-interpreter/',
-                'c': '/c-interpreter/',
-                'csharp': '/csharp-interpreter/',
-                'java': '/java-interpreter/',
-                'javascript': '/js-interpreter/',
-                'python': '/python-interpreter/'
+            // Define styles to avoid Django template parsing conflicts
+            const textareaStyle = {
+                fontFamily: 'monospace'
             };
 
-            let url = endpointMap[selectedInterpreter];
-            fetch(url, {
-                method: 'POST',
-                body: formData,
-            })
-            .then(response => response.json())
-            .then(data => {
-                const outputDiv = document.getElementById('output');
-                if (data.success) {
-                    // Jeśli działanie kodu zakończyło się sukcesem, pokaż wyjście
-                    outputDiv.textContent = "Output:\n" + data.output;
-                    outputDiv.style.color = "green";
-                } else {
-                    // Jeśli wystąpił błąd, pokaż szczegóły błędu
-                    outputDiv.textContent = "Error:\n" + data.error;
-                    outputDiv.style.color = "red";
+            const outputStyle = {
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                minHeight: '100px'
+            };
+
+            // Get CSRF token from cookie
+            const getCSRFToken = () => {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === 'csrftoken') return value;
                 }
-            })
-            .catch(error => {
-                const outputDiv = document.getElementById('output');
-                outputDiv.textContent = "Unexpected error: " + error;
-                outputDiv.style.color = "red";
-            });
-        });
+                return '';
+            };
+
+            const handleInputChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({
+                    ...prev,
+                    [name]: value
+                }));
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setOutput('');
+                setHasOutput(false);
+
+                // Mapa endpointów do API
+                const endpointMap = {
+                    'powershell': '/powershell-interpreter/',
+                    'c': '/c-interpreter/',
+                    'csharp': '/csharp-interpreter/',
+                    'java': '/java-interpreter/',
+                    'javascript': '/js-interpreter/',
+                    'python': '/python-interpreter/'
+                };
+
+                const url = endpointMap[formData.interpreter];
+                const formDataToSend = new FormData();
+                formDataToSend.append('code', formData.code);
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': getCSRFToken()
+                        },
+                        body: formDataToSend
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        setOutput(data.output);
+                        setIsError(false);
+                    } else {
+                        setOutput(data.error);
+                        setIsError(true);
+                    }
+                    setHasOutput(true);
+                } catch (error) {
+                    setOutput("Unexpected error: " + error.message);
+                    setIsError(true);
+                    setHasOutput(true);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const interpreterOptions = [
+                { value: 'python', label: 'Python' },
+                { value: 'powershell', label: 'PowerShell' },
+                { value: 'c', label: 'C' },
+                { value: 'csharp', label: 'C#' },
+                { value: 'java', label: 'Java' },
+                { value: 'javascript', label: 'JavaScript' }
+            ];
+
+            return (
+                <div className="container my-5">
+                    <div className="row justify-content-center">
+                        <div className="col-md-10">
+                            <div className="card">
+                                <div className="card-header">
+                                    <h2 className="text-center mb-0">Code Interpreter</h2>
+                                </div>
+                                <div className="card-body">
+                                    <form onSubmit={handleSubmit} className="needs-validation">
+                                        <div className="mb-3">
+                                            <label className="form-label">Select Interpreter:</label>
+                                            <select
+                                                name="interpreter"
+                                                value={formData.interpreter}
+                                                onChange={handleInputChange}
+                                                className="form-select"
+                                                required
+                                            >
+                                                {interpreterOptions.map(option => (
+                                                    <option key={option.value} value={option.value}>
+                                                        {option.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label">Code:</label>
+                                            <textarea
+                                                name="code"
+                                                value={formData.code}
+                                                onChange={handleInputChange}
+                                                className="form-control"
+                                                rows="12"
+                                                placeholder="Write your code here..."
+                                                required
+                                                style={textareaStyle}
+                                            />
+                                        </div>
+
+                                        <div className="d-grid gap-2">
+                                            <button
+                                                type="submit"
+                                                className="btn btn-primary"
+                                                disabled={loading || !formData.code.trim()}
+                                            >
+                                                {loading ? 'Running...' : 'Run Code'}
+                                            </button>
+                                        </div>
+                                    </form>
+
+                                    {hasOutput && (
+                                        <div className="mt-4">
+                                            <h5>Output:</h5>
+                                            <div 
+                                                className={`p-3 rounded ${isError ? 'bg-danger-subtle border border-danger' : 'bg-light border'}`}
+                                                style={{
+                                                    ...outputStyle,
+                                                    color: isError ? '#dc3545' : '#198754'
+                                                }}
+                                            >
+                                                {isError ? `Error:\n${output}` : `Output:\n${output}`}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CodeInterpreter />);
     </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

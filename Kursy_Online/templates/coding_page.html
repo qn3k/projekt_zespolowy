@@ -1,0 +1,414 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'styles.css' %}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+</head>
+<body>
+    <header>
+        {% include 'includes/navbar.html' %}
+    </header>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const CodingPage = () => {
+            const [pageData, setPageData] = React.useState(null);
+            const [formData, setFormData] = React.useState({
+                language: 'python',
+                code: ''
+            });
+            const [output, setOutput] = React.useState('');
+            const [loading, setLoading] = React.useState(false);
+            const [hasOutput, setHasOutput] = React.useState(false);
+            const [isError, setIsError] = React.useState(false);
+            const [testResults, setTestResults] = React.useState(null);
+            const [pageLoading, setPageLoading] = React.useState(true);
+
+            // URL parameters
+            const courseId = {{ course_id }};
+            const chapterId = {{ chapter_id }};
+            const pageId = {{ page_id }};
+
+            // Define styles to avoid Django template parsing conflicts
+            const textareaStyle = {
+                fontFamily: 'monospace'
+            };
+
+            const outputStyle = {
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                minHeight: '100px'
+            };
+
+            // Get CSRF token from cookie
+            const getCSRFToken = () => {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === 'csrftoken') return value;
+                }
+                return '';
+            };
+
+            // Load page data on component mount
+            React.useEffect(() => {
+                loadPageData();
+            }, []);
+
+            const loadPageData = async () => {
+                try {
+                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/`);
+                    if (!response.ok) {
+                        throw new Error('Failed to load page data');
+                    }
+                    const data = await response.json();
+                    setPageData(data);
+                    
+                    // Set initial code if available
+                    if (data.coding_exercise && data.coding_exercise.initial_code) {
+                        setFormData(prev => ({
+                            ...prev,
+                            code: data.coding_exercise.initial_code
+                        }));
+                    }
+                } catch (error) {
+                    console.error('Error loading page data:', error);
+                } finally {
+                    setPageLoading(false);
+                }
+            };
+
+            const handleInputChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({
+                    ...prev,
+                    [name]: value
+                }));
+            };
+
+            const handleRunCode = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setOutput('');
+                setHasOutput(false);
+                setTestResults(null);
+
+                // Mapa endpointów do API - same as interpreter
+                const endpointMap = {
+                    'powershell': '/powershell-interpreter/',
+                    'c': '/c-interpreter/',
+                    'csharp': '/csharp-interpreter/',
+                    'java': '/java-interpreter/',
+                    'javascript': '/js-interpreter/',
+                    'python': '/python-interpreter/'
+                };
+
+                const url = endpointMap[formData.language];
+                const formDataToSend = new FormData();
+                formDataToSend.append('code', formData.code);
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': getCSRFToken()
+                        },
+                        body: formDataToSend
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        setOutput(data.output);
+                        setIsError(false);
+                    } else {
+                        setOutput(data.error);
+                        setIsError(true);
+                    }
+                    setHasOutput(true);
+                } catch (error) {
+                    setOutput("Unexpected error: " + error.message);
+                    setIsError(true);
+                    setHasOutput(true);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleSubmitSolution = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setTestResults(null);
+
+                console.log('=== SUBMISSION DEBUG ===');
+                console.log('Submitting code:', formData.code);
+                console.log('URL:', `/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/submit_solution/`);
+
+                try {
+                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/${pageId}/submit_solution/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken()
+                        },
+                        body: JSON.stringify({
+                            code: formData.code
+                        })
+                    });
+
+                    console.log('Response status:', response.status);
+                    console.log('Response ok:', response.ok);
+                    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+                    
+                    const responseText = await response.text();
+                    console.log('Raw response body:', responseText);
+
+                    try {
+                        const data = JSON.parse(responseText);
+                        console.log('Parsed JSON response:', data);
+                        
+                        if (data.test_results) {
+                            console.log('=== TEST RESULTS ===');
+                            data.test_results.forEach((result, index) => {
+                                console.log(`Test ${index + 1}:`, {
+                                    input: result.input,
+                                    expected: result.expected_output,
+                                    actual: result.actual_output,
+                                    passed: result.passed,
+                                    error: result.error
+                                });
+                            });
+                        }
+                        
+                        setTestResults(data);
+                    } catch (jsonError) {
+                        console.error('Failed to parse JSON:', jsonError);
+                        console.log('Response was not JSON, likely HTML error page');
+                        setTestResults({
+                            success: false,
+                            error: 'Server error - check console for details'
+                        });
+                    }
+                    
+                } catch (error) {
+                    console.error('Network error:', error);
+                    setTestResults({
+                        success: false,
+                        error: error.message
+                    });
+                } finally {
+                    setLoading(false);
+                }
+            };  
+
+            const languageOptions = [
+                { value: 'python', label: 'Python' },
+                { value: 'powershell', label: 'PowerShell' },
+                { value: 'c', label: 'C' },
+                { value: 'csharp', label: 'C#' },
+                { value: 'java', label: 'Java' },
+                { value: 'javascript', label: 'JavaScript' }
+            ];
+
+            if (pageLoading) {
+                return (
+                    <div className="container my-5">
+                        <div className="row justify-content-center">
+                            <div className="col-md-10">
+                                <div className="text-center">
+                                    <div className="spinner-border" role="status">
+                                        <span className="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p className="mt-2">Loading coding exercise...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="container my-5">
+                    <div className="row">
+                        <div className="col-md-6">
+                            <div className="card mb-4">
+                                <div className="card-header">
+                                    <h3 className="mb-0">{pageData?.title || 'Coding Exercise'}</h3>
+                                </div>
+                                <div className="card-body">
+                                    <div className="mb-3">
+                                        <h5>Treść zadania</h5>
+                                        <div dangerouslySetInnerHTML={{ 
+                                            __html: pageData?.coding_exercise?.description || 'No description available.' 
+                                        }} />
+                                    </div>
+                                    
+                                    {pageData?.coding_exercise?.solution && (
+                                        <div className="mb-3">
+                                            <h6>Oczekiwany wynik:</h6>
+                                            <div className="p-3 bg-light border rounded" style={textareaStyle}>
+                                                {pageData.coding_exercise.solution}
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {pageData?.coding_exercise?.allowed_languages && pageData.coding_exercise.allowed_languages.length > 0 && (
+                                        <div className="mb-3">
+                                            <h6>Allowed Languages:</h6>
+                                            <p>{pageData.coding_exercise.allowed_languages.join(', ')}</p>
+                                        </div>
+                                    )}
+                                    
+                                    {pageData?.coding_exercise?.time_limit && (
+                                        <div className="mb-3">
+                                            <h6>Time Limit:</h6>
+                                            <p>{pageData.coding_exercise.time_limit}ms</p>
+                                        </div>
+                                    )}
+                                    
+                                    {pageData?.coding_exercise?.memory_limit && (
+                                        <div className="mb-3">
+                                            <h6>Memory Limit:</h6>
+                                            <p>{Math.round(pageData.coding_exercise.memory_limit / (1024 * 1024))}MB</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {testResults && (
+                                <div className="card">
+                                    <div className="card-header">
+                                        <h5 className="mb-0">Test Results</h5>
+                                    </div>
+                                    <div className="card-body">
+                                        {testResults.success ? (
+                                            <div className="alert alert-success">
+                                                <h6>✅ Brawo, udało Ci się!</h6>
+                                                <p className="mb-0">Your solution is correct.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="alert alert-danger">
+                                                <h6>❌ Błędna odpowiedź</h6>
+                                                {testResults.error && <p>Error: {testResults.error}</p>}
+                                            </div>
+                                        )}
+                                        
+                                        {testResults.test_results && (
+                                            <div className="mt-3">
+                                                <h6>Test Case Results:</h6>
+                                                {testResults.test_results.map((result, index) => (
+                                                    <div key={index} className={`p-2 mb-2 rounded border ${result.passed ? 'bg-success-subtle' : 'bg-danger-subtle'}`}>
+                                                        <div className="d-flex justify-content-between">
+                                                            <span>Test Case {index + 1}</span>
+                                                            <span>{result.passed ? '✅ Passed' : '❌ Failed'}</span>
+                                                        </div>
+                                                        {!result.passed && !result.is_hidden && (
+                                                            <div className="mt-2 small">
+                                                                <div><strong>Expected:</strong> {result.expected_output}</div>
+                                                                <div><strong>Got:</strong> {result.actual_output}</div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="col-md-6">
+                            <div className="card">
+                                <div className="card-header">
+                                    <h5 className="mb-0">Code Editor</h5>
+                                </div>
+                                <div className="card-body">
+                                    <form className="needs-validation">
+                                        <div className="mb-3">
+                                            <label className="form-label">Select Language:</label>
+                                            <select
+                                                name="language"
+                                                value={formData.language}
+                                                onChange={handleInputChange}
+                                                className="form-select"
+                                                required
+                                            >
+                                                {languageOptions.map(option => (
+                                                    <option key={option.value} value={option.value}>
+                                                        {option.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label">Your Code:</label>
+                                            <textarea
+                                                name="code"
+                                                value={formData.code}
+                                                onChange={handleInputChange}
+                                                className="form-control"
+                                                rows="20"
+                                                placeholder="Write your solution here..."
+                                                required
+                                                style={textareaStyle}
+                                            />
+                                        </div>
+
+                                        <div className="d-grid gap-2">
+                                            <button
+                                                type="button"
+                                                className="btn btn-outline-primary"
+                                                disabled={loading || !formData.code.trim()}
+                                                onClick={handleRunCode}
+                                            >
+                                                {loading ? 'Running...' : 'Test Code'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn btn-success"
+                                                disabled={loading || !formData.code.trim()}
+                                                onClick={handleSubmitSolution}
+                                            >
+                                                {loading ? 'Submitting...' : 'Submit Solution'}
+                                            </button>
+                                        </div>
+                                    </form>
+
+                                    {hasOutput && (
+                                        <div className="mt-4">
+                                            <h6>Output:</h6>
+                                            <div 
+                                                className={`p-3 rounded ${isError ? 'bg-danger-subtle border border-danger' : 'bg-light border'}`}
+                                                style={{
+                                                    ...outputStyle,
+                                                    color: isError ? '#dc3545' : '#198754'
+                                                }}
+                                            >
+                                                {isError ? `Error:\n${output}` : `Output:\n${output}`}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CodingPage />);
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

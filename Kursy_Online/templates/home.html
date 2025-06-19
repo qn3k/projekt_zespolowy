@@ -39,17 +39,19 @@
     
     <script>
         const isAuthenticated = "{% if user.is_authenticated %}true{% else %}false{% endif %}" === "true";
+
         async function loadCourses(sortBy = 'title') {
             try {
-                const response = await fetch(`/api/courses/?sort=${sortBy}`);
+                const response = await fetch(`/api/courses/`);
                 console.log('Response status:', response.status);
+                console.log('Frontend sorting by:', sortBy);
                 
                 if (!response.ok) throw new Error('Błąd podczas pobierania kursów');
                 
                 const data = await response.json();
                 console.log('Otrzymane dane:', data);
                 
-                const courses = data.results || data;
+                let courses = data.results || data;
                 const container = document.getElementById('courses-container');
                 container.innerHTML = '';
 
@@ -57,6 +59,26 @@
                     container.innerHTML = '<div class="col-12"><p>Brak dostępnych kursów.</p></div>';
                     return;
                 }
+
+                courses.sort((a, b) => {
+                    switch(sortBy) {
+                        case 'title':
+                            return (a.title || '').localeCompare(b.title || '');
+                        
+                        case 'date':
+                            const dateA = new Date(a.created_at || 0);
+                            const dateB = new Date(b.created_at || 0);
+                            return dateB - dateA;
+                        
+                        case 'rating':
+                            const ratingA = parseFloat(a.average_rating || 0);
+                            const ratingB = parseFloat(b.average_rating || 0);
+                            return ratingB - ratingA;
+                        
+                        default:
+                            return 0;
+                    }
+                });
 
                 courses.forEach(course => {
                     const courseElement = `
@@ -111,6 +133,7 @@
         }
 
         document.getElementById('sort-select').addEventListener('change', function() {
+            console.log('Sort changed to:', this.value);
             loadCourses(this.value);
         });
 

@@ -25,7 +25,7 @@ from Kursy_Online.views import AuthViewSet, verify_email, login_view, home_view,
     PaymentViewSet, TechnologyViewSet, course_detail_view, create_chapter_view, profile_view, get_balance, get_available_moderators,    \
     my_courses_view, chapter_detail_view, create_chapter_page, manage_media_view, edit_chapter_page_view, page_detail_view, LoginHistoryView, ContentImageViewSet, ContentVideoViewSet, \
     quiz_page_detail_view, create_quiz_view, create_coding_view, payment_view, edit_quiz_view, rating_view, add_balance_view, python_interpreter, run_code, powershell_interpreter, c_interpreter, csharp_interpreter, java_interpreter, \
-    js_interpreter, interpreter_view, coding_page_detail_view
+    js_interpreter, interpreter_view, coding_page_detail_view, edit_coding_view
 
 router = DefaultRouter()
 router.register(r'auth', AuthViewSet, basename='auth')
@@ -80,6 +80,7 @@ urlpatterns = [
     path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/create/quiz/',create_quiz_view,name='create_quiz'),
     path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/create/coding/',create_coding_view,name='create_coding'),
     path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/<int:page_id>/coding', coding_page_detail_view, name='coding_page_detail'),
+    path('courses/<int:course_id>/chapters/<int:chapter_id>/pages/<int:page_id>/editcoding/', edit_coding_view, name='edit_coding'), 
     path('profile/', profile_view, name='profile'),
     path('courses/<int:course_id>/payment/', payment_view, name='course_payment'),
     path('my-courses/', my_courses_view, name='my_courses'),

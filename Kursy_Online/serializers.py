@@ -1,4 +1,4 @@
-from neo4j import Transaction
+from django.db import transaction
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
@@ -121,7 +121,7 @@ def update(self, instance, validated_data):
         print(f"QuizSerializer.update() called with data: {validated_data}")
         
         try:
-            with Transaction.atomic():
+            with transaction.atomic():
                 instance.description = validated_data.get('description', instance.description)
                 instance.save()
 
@@ -174,62 +174,60 @@ class CodingExerciseSerializer(serializers.ModelSerializer):
         return coding_exercise
 
 class PageSerializer(serializers.ModelSerializer):
-    quiz = QuizSerializer(required=False)
+    quiz = QuizSerializer(required=False, read_only=True)
+    content_page = ContentPageSerializer(required=False, read_only=True)
+    coding_exercise = CodingExerciseSerializer(required=False, read_only=True)
 
     class Meta:
         model = Page
-        fields = ['id', 'title', 'type', 'order', 'quiz']
+        fields = ['id', 'title', 'type', 'order', 'quiz', 'content_page', 'coding_exercise']
 
     def create(self, validated_data):
-        if validated_data.get('type') == 'QUIZ':
-            quiz_data = validated_data.pop('quiz', {})
-            questions_data = quiz_data.pop('questions', [])
-            page = Page.objects.create(**validated_data)
-            
-            quiz = Quiz.objects.create(page=page, **quiz_data)
-            
-            for question_data in questions_data:
-                answers_data = question_data.pop('answers', [])
-                question = QuizQuestion.objects.create(quiz=quiz, **question_data)
-                
-                for answer_data in answers_data:
-                    QuizAnswer.objects.create(question=question, **answer_data)
-            
-            return page
-        return super().create(validated_data)
-
-    def update(self, instance, validated_data):
-        if instance.type == 'CONTENT':
-            content_page = ContentPage.objects.filter(page=instance).first()
-            if not content_page:
-                ContentPage.objects.create(page=instance, content='')
-                instance.refresh_from_db()
-
-        return super().update(instance, validated_data)
+        page_type = validated_data.get('type')
+        page = Page.objects.create(**validated_data)
+        
+        # Create related objects based on page type
+        if page_type == 'QUIZ':
+            Quiz.objects.create(page=page, description='')
+        elif page_type == 'CONTENT':
+            ContentPage.objects.create(page=page, content='')
+        elif page_type == 'CODING':
+            CodingExercise.objects.create(
+                page=page,
+                description='',
+                initial_code='',
+                solution=''
+            )
+        
+        return page
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        if instance.type == 'CONTENT':
+        
+        # Include related data based on page type
+        if instance.type == 'QUIZ':
             try:
-                content_page = instance.contentpage
+                quiz = Quiz.objects.get(page=instance)
+                representation['quiz'] = QuizSerializer(quiz).data
+            except Quiz.DoesNotExist:
+                representation['quiz'] = None
+                
+        elif instance.type == 'CONTENT':
+            try:
+                content_page = ContentPage.objects.get(page=instance)
                 representation['content_page'] = ContentPageSerializer(content_page).data
             except ContentPage.DoesNotExist:
-                representation['content_page'] = None
-        return representation
-    
-    def get_content_page(self, obj):
-        if obj.type == 'CONTENT':
+                representation['content_page'] = {'content': ''}
+                
+        elif instance.type == 'CODING':
             try:
-                content_page = obj.contentpage
-                return {
-                    'content': content_page.content,
-                    'images': ContentImageSerializer(content_page.images.all(), many=True).data,
-                    'videos': ContentVideoSerializer(content_page.videos.all(), many=True).data
-                }
-            except ContentPage.DoesNotExist:
-                return None
-        return None
-    
+                coding_exercise = CodingExercise.objects.get(page=instance)
+                representation['coding_exercise'] = CodingExerciseSerializer(coding_exercise).data
+            except CodingExercise.DoesNotExist:
+                representation['coding_exercise'] = None
+        
+        return representation
+        
 class ChapterSerializer(serializers.ModelSerializer):
     pages = PageSerializer(many=True, required=False)
 
@@ -244,6 +242,79 @@ class CourseReviewSerializer(serializers.ModelSerializer):
         model = CourseReview
         fields = ['id', 'course', 'user', 'rating', 'comment', 'created_at']
         read_only_fields = ['course', 'user']
+
+class QuizSerializer(serializers.ModelSerializer):
+    questions = QuizQuestionSerializer(many=True, required=False)
+
+    class Meta:
+        model = Quiz
+        fields = ['description', 'questions']
+
+    def update(self, instance, validated_data):
+        print(f"QuizSerializer.update() called with data: {validated_data}")
+        
+        try:
+            with transaction.atomic():  # Note: using transaction, not Transaction
+                instance.description = validated_data.get('description', instance.description)
+                instance.save()
+
+                if 'questions' in validated_data:
+                    print("Updating questions...")
+                    instance.questions.all().delete()
+                    
+                    for question_data in validated_data['questions']:
+                        print(f"Processing question: {question_data}")
+                        question = QuizQuestion.objects.create(
+                            quiz=instance,
+                            question=question_data['question'],
+                            order=question_data.get('order', 1)
+                        )
+
+                        for answer_data in question_data.get('answers', []):
+                            QuizAnswer.objects.create(
+                                question=question,
+                                answer=answer_data['answer'],
+                                is_correct=answer_data.get('is_correct', False)
+                            )
+                
+                return instance
+        except Exception as e:
+            print(f"Error in QuizSerializer.update(): {str(e)}")
+            raise serializers.ValidationError(str(e))
+        
+class CodingExerciseSerializer(serializers.ModelSerializer):
+    test_cases = TestCaseSerializer(many=True, required=False)
+
+    class Meta:
+        model = CodingExercise
+        fields = ['page', 'description', 'initial_code', 'solution', 'test_cases']
+        read_only_fields = ['page']
+
+    def create(self, validated_data):
+        test_cases_data = validated_data.pop('test_cases', [])
+        coding_exercise = CodingExercise.objects.create(**validated_data)
+
+        for test_case in test_cases_data:
+            TestCase.objects.create(exercise=coding_exercise, **test_case)
+
+        return coding_exercise
+
+    def update(self, instance, validated_data):
+        print(f"CodingExerciseSerializer.update() called with data: {validated_data}")
+        
+        try:
+            instance.description = validated_data.get('description', instance.description)
+            instance.initial_code = validated_data.get('initial_code', instance.initial_code)
+            instance.solution = validated_data.get('solution', instance.solution)
+            instance.save()
+
+            if 'test_cases' in validated_data:
+                print("Updating test cases...")
+                
+            return instance
+        except Exception as e:
+            print(f"Error in CodingExerciseSerializer.update(): {str(e)}")
+            raise serializers.ValidationError(str(e))        
 
 class CourseSerializer(serializers.ModelSerializer):
     chapters = ChapterSerializer(many=True, required=False)

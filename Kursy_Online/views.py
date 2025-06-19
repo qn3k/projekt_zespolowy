@@ -661,6 +661,7 @@ class PageViewSet(viewsets.ModelViewSet):
             return Page.objects.filter(chapter_id=chapter_id).only('id', 'title', 'type', 'order')
         except Chapter.DoesNotExist:
             return Page.objects.none()
+
     def perform_create(self, serializer):
         chapter = Chapter.objects.get(id=self.kwargs.get('chapter_pk'))
         max_order = Page.objects.filter(chapter=chapter).aggregate(Max('order'))['order__max']
@@ -674,251 +675,226 @@ class PageViewSet(viewsets.ModelViewSet):
             return ContentVideoCreateSerializer
         return super().get_serializer_class()
 
-    @action(detail=True, methods=['PATCH'])
-    def update_order(self, request, course_pk=None, chapter_pk=None, pk=None):
+    def retrieve(self, request, *args, **kwargs):
         page = self.get_object()
-        new_order = request.data.get('order')
-
-        if new_order is None:
-            return Response({'error': 'Nie podano nowej kolejności'}, status=400)
-
-        try:
-            new_order = int(new_order)
-        except (TypeError, ValueError):
-            return Response({'error': 'Kolejność musi być liczbą'}, status=400)
-
-        with transaction.atomic():
-            current_order = page.order
-            pages = Page.objects.filter(chapter_id=chapter_pk)
-            max_order = pages.aggregate(max_order=models.Max('order'))['max_order'] or 0
-
-            if new_order < 1 or new_order > max_order:
-                return Response({'error': f'Kolejność musi być między 1 a {max_order}'}, status=400)
-
-            page.order = max_order + 1
-            page.save()
-
-            if new_order > current_order:
-                pages.filter(
-                    order__gt=current_order,
-                    order__lte=new_order
-                ).exclude(id=page.id).update(order=models.F('order') - 1)
-            else:
-                pages.filter(
-                    order__lt=current_order,
-                    order__gte=new_order
-                ).exclude(id=page.id).update(order=models.F('order') + 1)
-
-            page.order = new_order
-            page.save()
-
-        return Response({
-            'message': f'Zmieniono kolejność z {current_order} na {new_order}',
-            'current_order': new_order
-        })
-
-    @action(detail=True, methods=['post'])
-    def add_quiz_question(self, request, *args, **kwargs):
-        page = self.get_object()
-
-        if page.type != 'QUIZ':
-            return Response(
-                {'error': 'Ta strona nie jest quizem'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if not hasattr(page, 'quiz'):
-            return Response(
-                {'error': 'Quiz nie został jeszcze utworzony dla tej strony'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        serializer = QuizQuestionSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(quiz=page.quiz)
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    @action(detail=True, methods=['post'])
-    def add_content_image(self, request, *args, **kwargs):
-        page = self.get_object()
-
-        if page.type != 'CONTENT':
-            return Response(
-                {'error': 'Ta strona nie jest stroną z treścią'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        content_page, created = ContentPage.objects.get_or_create(
-            page=page,
-            defaults={'content': ''}
-        )
-        serializer = ContentImageCreateSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(content_page=content_page)
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-    @action(detail=True, methods=['post'])
-    def add_content_video(self, request, *args, **kwargs):
-        page = self.get_object()
-
-        if page.type != 'CONTENT':
-            return Response(
-                {'error': 'Ta strona nie jest stroną z treścią'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        content_page, created = ContentPage.objects.get_or_create(
-            page=page,
-            defaults={'content': ''}
-        )
-
-        serializer = ContentVideoSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(content_page=content_page)
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    @action(detail=True, methods=['post'])
-    def add_test_case(self, request, *args, **kwargs):
-        page = self.get_object()
-        page.refresh_from_db()
-
-        if page.type != 'CODING':
-            return Response(
-                {'error': 'Ta strona nie jest zadaniem programistycznym'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        coding_exercise = CodingExercise.objects.filter(page=page).first()
-        if not coding_exercise:
-            return Response(
-                {'error': 'Zadanie programistyczne nie zostało jeszcze utworzone'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        serializer = TestCaseSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(exercise=coding_exercise)
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    @action(detail=True, methods=['post'])
-    def update_content(self, request, pk=None):
-        page = self.get_object()
-        print(f"Updating content for page type: {page.type}")  # Debug log
-        print(f"Received data: {request.data}") 
-        if page.type == 'CONTENT':
-            serializer = ContentPageSerializer(page.content_page, data=request.data)
-
+        
+        # Handle different page types
         if page.type == 'QUIZ':
             try:
-                quiz = page.quiz
-                print(f"Found quiz: {quiz.id}")
-                
-                serializer = QuizSerializer(quiz, data=request.data)
-                print(f"Created serializer, checking validity...")
-                
-                if serializer.is_valid():
-                    print("Serializer is valid, saving...")
-                    serializer.save()
-                    print("Save completed successfully")
-                    return Response(serializer.data)
-                else:
-                    print(f"Serializer errors: {serializer.errors}")
-                    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
+                quiz = Quiz.objects.get(page=page)
+                quiz_serializer = QuizSerializer(quiz)
+                return Response({
+                    'id': page.id,
+                    'title': page.title,
+                    'type': page.type,
+                    'order': page.order,
+                    'quiz': quiz_serializer.data
+                })
             except Quiz.DoesNotExist:
-                print("Quiz not found for this page")
-                return Response(
-                    {'error': 'Quiz not found for this page'}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            except Exception as e:
-                print(f"Error processing quiz update: {str(e)}")
-                return Response(
-                    {'error': str(e)}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-
-                return Response(
-                    {'error': 'Unsupported page type'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-    
-            except Exception as e:
-                print(f"Unexpected error in update_content: {str(e)}")
-                return Response(
-                    {'error': str(e)}, 
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+                return Response({
+                    'id': page.id,
+                    'title': page.title,
+                    'type': page.type,
+                    'order': page.order,
+                    'error': 'Quiz not found for this page'
+                })
         
         elif page.type == 'CODING':
-            serializer = CodingExerciseSerializer(page.coding_exercise, data=request.data)
-        else:
-            return Response({'error':'Błędny typ strony.'}, status=400)
+            try:
+                coding_exercise = CodingExercise.objects.get(page=page)
+                serializer = CodingExerciseSerializer(coding_exercise)
+                return Response({
+                    'id': page.id,
+                    'title': page.title,
+                    'type': page.type,
+                    'order': page.order,
+                    'coding_exercise': serializer.data
+                })
+            except CodingExercise.DoesNotExist:
+                return Response({
+                    'id': page.id,
+                    'title': page.title,
+                    'type': page.type,
+                    'order': page.order,
+                    'error': 'Coding exercise not found'
+                })
+        
+        elif page.type == 'CONTENT':
+            try:
+                content_page = ContentPage.objects.get(page=page)
+                content_serializer = ContentPageSerializer(content_page)
+                return Response({
+                    'id': page.id,
+                    'title': page.title,
+                    'type': page.type,
+                    'order': page.order,
+                    'content_page': content_serializer.data
+                })
+            except ContentPage.DoesNotExist:
+                return Response({
+                    'id': page.id,
+                    'title': page.title,
+                    'type': page.type,
+                    'order': page.order,
+                    'content_page': {'content': ''}
+                })
+        
+        # Default fallback
+        return super().retrieve(request, *args, **kwargs)
 
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=400)
 
     @action(detail=True, methods=['post'])
-    def submit_solution(self, request, course_pk=None, chapter_pk=None, pk=None):
+    def update_content(self, request, course_pk=None, chapter_pk=None, pk=None):
         page = self.get_object()
-        chapter = page.chapter
-        course = chapter.course
-        if page.type != 'CODING':
-            return Response(
-                {'error': 'Ta strona nie jest zadaniem programistycznym'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        print(f"Updating content for page type: {page.type}")  
+        print(f"Received data: {request.data}") 
+        
         try:
-            coding_exercise = CodingExercise.objects.get(page=page)
-        except CodingExercise.DoesNotExist:
+            if page.type == 'CONTENT':
+                content_page, created = ContentPage.objects.get_or_create(
+                    page=page,
+                    defaults={'content': ''}
+                )
+                serializer = ContentPageSerializer(content_page, data=request.data)
+                
+                if serializer.is_valid():
+                    serializer.save()
+                    return Response(serializer.data)
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+            elif page.type == 'QUIZ':
+                try:
+                    quiz = page.quiz
+                    print(f"Found quiz: {quiz.page.id}")
+                    
+                    serializer = QuizSerializer(quiz, data=request.data)
+                    print(f"Created serializer, checking validity...")
+                    
+                    if serializer.is_valid():
+                        print("Serializer is valid, saving...")
+                        serializer.save()
+                        print("Save completed successfully")
+                        return Response(serializer.data)
+                    else:
+                        print(f"Serializer errors: {serializer.errors}")
+                        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                
+                except Quiz.DoesNotExist:
+                    print("Quiz not found for this page")
+                    return Response(
+                        {'error': 'Quiz not found for this page'}, 
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+
+            elif page.type == 'CODING':
+                try:
+                    coding_exercise = page.codingexercise  
+                    print(f"Found coding exercise: {coding_exercise.page.id}")
+                    
+                    serializer = CodingExerciseSerializer(coding_exercise, data=request.data)
+                    print(f"Created coding serializer, checking validity...")
+                    
+                    if serializer.is_valid():
+                        print("Coding serializer is valid, saving...")
+                        serializer.save()
+                        print("Coding save completed successfully")
+                        return Response(serializer.data)
+                    else:
+                        print(f"Coding serializer errors: {serializer.errors}")
+                        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                
+                except CodingExercise.DoesNotExist:
+                    print("Coding exercise not found for this page")
+                    return Response(
+                        {'error': 'Coding exercise not found for this page'}, 
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            
+            else:
+                return Response(
+                    {'error': 'Unsupported page type'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+        except Exception as e:
+            print(f"Unexpected error in update_content: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return Response(
-                {'error': 'Zadanie programistyczne nie zostało znalezione'},
-                status=status.HTTP_404_NOT_FOUND
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        
+        @action(detail=True, methods=['post'])
+        def submit_solution(self, request, course_pk=None, chapter_pk=None, pk=None):
+            logger.info("=== SUBMIT SOLUTION DEBUG ===")
+            logger.info(f"User: {request.user}")
+            logger.info(f"Request data: {request.data}")
+            
+            page = self.get_object()
+            logger.info(f"Page: {page.title} (ID: {page.id})")
+            
+            if page.type != 'CODING':
+                logger.error(f"Page type is {page.type}, not CODING")
+                return Response(
+                    {'error': 'Ta strona nie jest zadaniem programistycznym'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                coding_exercise = CodingExercise.objects.get(page=page)
+                logger.info(f"Found coding exercise with {coding_exercise.test_cases.count()} test cases")
+            except CodingExercise.DoesNotExist:
+                logger.error("CodingExercise not found")
+                return Response(
+                    {'error': 'Zadanie programistyczne nie zostało znalezione'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
-        serializer = CodeSubmissionSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            serializer = CodeSubmissionSerializer(data=request.data)
+            if not serializer.is_valid():
+                logger.error(f"Serializer errors: {serializer.errors}")
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        user_code = serializer.validated_data['code']
-        test_cases = coding_exercise.test_cases.all()
+            user_code = serializer.validated_data['code']
+            logger.info(f"User code: {user_code}")
+            
+            test_cases = coding_exercise.test_cases.all()
+            logger.info(f"Test cases: {[(tc.input_data, tc.expected_output) for tc in test_cases]}")
 
-        if not test_cases.exists():
-            return Response(
-                {'error': 'Brak przypadków testowych dla tego zadania'},
-                status=status.HTTP_404_NOT_FOUND
+            if not test_cases.exists():
+                logger.error("No test cases found")
+                return Response(
+                    {'error': 'Brak przypadków testowych dla tego zadania'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            executor = CodeExecutionService()
+            results = executor.run_all_tests(
+                user_code,
+                [
+                    {
+                        'input_data': test.input_data,
+                        'expected_output': test.expected_output,
+                        'is_hidden': test.is_hidden
+                    }
+                    for test in test_cases
+                ]
             )
+            
+            logger.info(f"Execution results: {results}")
 
-        executor = CodeExecutionService()
-        results = executor.run_all_tests(
-            user_code,
-            [
-                {
-                    'input_data': test.input_data,
-                    'expected_output': test.expected_output,
-                    'is_hidden': test.is_hidden
-                }
-                for test in test_cases
-            ]
-        )
+            if results['success']:
+                UserProgress.objects.update_or_create(
+                    user=request.user,
+                    page=page,
+                    defaults={
+                        'completed': True,
+                        'completed_at': timezone.now()
+                    }
+                )
 
-        if results['success']:
-            UserProgress.objects.update_or_create(
-                user=request.user,
-                page=page,
-                defaults={
-                    'completed': True,
-                    'completed_at': timezone.now()
-                }
-            )
-
-        return Response(results)
+            return Response(results)
 
 @api_view(['GET'])
 def verify_email(request):
@@ -1551,12 +1527,57 @@ def create_coding_view(request, course_id, chapter_id):
     })
 
 def coding_page_detail_view(request, course_id, chapter_id, page_id):
-    return render(request, 'coding_page.html', {
-        'title': 'Coding',
-        'course_id': course_id,
-        'chapter_id': chapter_id,
-        'page_id': page_id
-    })  
+    try:
+        page = Page.objects.get(
+            id=page_id,
+            chapter_id=chapter_id,
+            chapter__course_id=course_id,
+            type='CODING'  # Ensure it's a coding page
+        )
+        
+        return render(request, 'coding_page.html', {
+            'title': f'Coding - {page.title}',
+            'course_id': course_id,
+            'chapter_id': chapter_id,
+            'page_id': page_id,
+            'page': page
+        })
+    except Page.DoesNotExist:
+        messages.error(request, 'Coding page not found.')
+        return redirect('chapter_detail', course_id=course_id, chapter_id=chapter_id)
+
+@login_required
+def edit_coding_view(request, course_id, chapter_id, page_id):
+    try:
+        page = Page.objects.get(
+            id=page_id,
+            chapter_id=chapter_id,
+            chapter__course_id=course_id
+        )
+        course = page.chapter.course
+
+        if not (course.instructor == request.user or request.user in course.moderators.all()):
+            messages.error(request, 'Nie masz uprawnień do edycji tej strony.')
+            return redirect('course_detail', course_id=course_id)
+        
+        if page.type != 'CODING':
+            messages.error(request, 'Ta strona nie jest zadaniem programistycznym.')
+            return redirect('chapter_detail', course_id=course_id, chapter_id=chapter_id)
+            
+        if not hasattr(page, 'codingexercise'):
+            messages.error(request, 'Zadanie programistyczne nie zostało znalezione.')
+            return redirect('chapter_detail', course_id=course_id, chapter_id=chapter_id)
+        
+        return render(request, 'edit_coding.html', {
+            'title': f'Edycja zadania programistycznego - {page.title}',
+            'course_id': course_id,
+            'chapter_id': chapter_id,
+            'page_id': page_id
+        })
+        
+    except Page.DoesNotExist:
+        messages.error(request, 'Strona nie została znaleziona.')
+        return redirect('course_detail', course_id=course_id)
 
 @login_required
 def edit_quiz_view(request, course_id, chapter_id, page_id):

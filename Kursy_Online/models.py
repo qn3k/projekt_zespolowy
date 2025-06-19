@@ -168,7 +168,7 @@ class CodingExercise(models.Model):
     description = models.TextField()
     initial_code = models.TextField(blank=True)
     solution = models.TextField(blank=True)
-    allowed_languages = models.JSONField(default=list)
+    #allowed_languages = models.JSONField(default=list)
     memory_limit = models.IntegerField(default=100*1024*1024)
     time_limit = models.IntegerField(default=5000)
 

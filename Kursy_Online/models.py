@@ -171,11 +171,6 @@ class CodingExercise(models.Model):
     allowed_languages = models.JSONField(default=list)
     memory_limit = models.IntegerField(default=100*1024*1024)
     time_limit = models.IntegerField(default=5000)
-    difficulty = models.CharField(
-        max_length=50,
-        choices=[('easy', 'Easy'), ('medium', 'Medium'), ('hard', 'Hard')],  # Przykładowe poziomy trudności
-        default='medium'
-    )
 
 class TestCase(models.Model):
     exercise = models.ForeignKey(CodingExercise, on_delete=models.CASCADE, related_name='test_cases')
@@ -187,6 +182,15 @@ class TestCase(models.Model):
     class Meta:
         ordering = ['order']
 
+'''class CodingExercise(models.Model):
+    page = models.OneToOneField(Page, on_delete=models.CASCADE, primary_key=True)
+    description = models.TextField()
+    example_input = models.TextField(blank=True)
+    example_output = models.TextField(blank=True)
+    expected_output = models.TextField(blank=True)
+    allowed_languages = models.JSONField(default=list)
+    memory_limit = models.IntegerField(default=100*1024*1024)
+    time_limit = models.IntegerField(default=5000)  '''
 
 class UserProgress(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

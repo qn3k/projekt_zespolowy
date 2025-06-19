@@ -1,13 +1,11 @@
 from django.contrib.auth import login, logout, authenticate
 from django.shortcuts import render, redirect
-from django.http import JsonResponse
 import traceback
 import subprocess
 import shutil
 import tempfile
 import os
 import json
-import requests
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.contrib.auth.password_validation import validate_password
@@ -41,7 +39,7 @@ from .serializers import UserRegistrationSerializer, PayoutHistorySerializer, Us
     PageSerializer, ContentPageSerializer, QuizSerializer, CodingExerciseSerializer, CodeSubmissionSerializer, \
      TestCaseSerializer,ContentVideoSerializer, ContentImageSerializer, QuizQuestionSerializer, \
     ContentImageCreateSerializer, ContentVideoCreateSerializer, CourseReviewSerializer, PublicCourseSerializer, \
-    TechnologySerializer, LoginHistorySerializer, PaymentSerializer, TestCase
+    TechnologySerializer, LoginHistorySerializer, PaymentSerializer
 from django.core.mail import EmailMessage
 import stripe
 
@@ -868,105 +866,59 @@ class PageViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def submit_solution(self, request, course_pk=None, chapter_pk=None, pk=None):
-        """
-        Obsługa przesyłania rozwiązania przez użytkownika i weryfikacja wszystkich przypadków testowych.
-        """
         page = self.get_object()
         chapter = page.chapter
         course = chapter.course
-
-        # Sprawdzenie czy strona obsługuje zadania programistyczne
         if page.type != 'CODING':
             return Response(
                 {'error': 'Ta strona nie jest zadaniem programistycznym'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-        # Pobranie zadania programistycznego
         try:
             coding_exercise = CodingExercise.objects.get(page=page)
         except CodingExercise.DoesNotExist:
             return Response(
-                {'error': 'Zadanie programistyczne nie zostało skonfigurowane.'},
+                {'error': 'Zadanie programistyczne nie zostało znalezione'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Walidacja danych użytkownika
         serializer = CodeSubmissionSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        # Pobranie kodu użytkownika
         user_code = serializer.validated_data['code']
-
-        # Pobranie wszystkich przypadków testowych dla zadania
         test_cases = coding_exercise.test_cases.all()
+
         if not test_cases.exists():
             return Response(
-                {'error': 'Brak przypadków testowych dla tego zadania.'},
+                {'error': 'Brak przypadków testowych dla tego zadania'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Inicjalizacja klasy wykonawczej do uruchamiania kodu
         executor = CodeExecutionService()
-
-        # Przygotowanie testów (ukrywanie danych dla ukrytych przypadków testowych)
-        tests_data = [
-            {
-                'input_data': test.input_data,
-                'expected_output': test.expected_output,
-                'is_hidden': test.is_hidden
-            }
-            for test in test_cases
-        ]
-
-        # Wykonanie wszystkich przypadków testowych za jednym razem
-        results = executor.run_all_tests(user_code, tests_data)
-
-        # Przetwarzanie wyników wykonania testów (ukrywanie szczegółów ukrytych testów)
-        processed_results = []
-        all_tests_passed = results['success']
-
-        for test, result in zip(tests_data, results['results']):
-            is_hidden = test['is_hidden']
-            if is_hidden:
-                processed_results.append({
-                    'input': 'ukryty przypadek testowy',
-                    'expected_output': 'ukryty',
-                    'actual_output': 'ukryty' if 'actual_output' in result else None,
-                    'success': result['success'],
-                    'error': None if result['success'] else 'Nieudane wykonanie ukrytego testu'
-                })
-            else:
-                processed_results.append({
-                    'input': test['input_data'],
-                    'expected_output': test['expected_output'],
-                    'actual_output': result.get('actual_output'),
-                    'success': result['success'],
-                    'error': result.get('error')
-                })
-
-        # Aktualizacja informacji o progresie użytkownika
-        user_progress, created = UserProgress.objects.get_or_create(
-            user=request.user,
-            page=page,
-            defaults={
-                'attempts': 0
-            }
+        results = executor.run_all_tests(
+            user_code,
+            [
+                {
+                    'input_data': test.input_data,
+                    'expected_output': test.expected_output,
+                    'is_hidden': test.is_hidden
+                }
+                for test in test_cases
+            ]
         )
-        user_progress.attempts += 1  # Zwiększamy liczbę prób
-        if all_tests_passed:
-            user_progress.completed = True
-            user_progress.completed_at = timezone.now()
-        user_progress.save()
 
-        # Zwrot informacji o wynikach
-        return Response({
-            'success': all_tests_passed,
-            'results': processed_results,
-            'total_attempts': user_progress.attempts
-        })
+        if results['success']:
+            UserProgress.objects.update_or_create(
+                user=request.user,
+                page=page,
+                defaults={
+                    'completed': True,
+                    'completed_at': timezone.now()
+                }
+            )
 
+        return Response(results)
 
 @api_view(['GET'])
 def verify_email(request):
@@ -1202,7 +1154,7 @@ def register_view(request):
         user.is_active = False 
         user.save()
 
-        # Wysylanie e-maila aktywacyjnego
+        # WysyĹ‚anie e-maila aktywacyjnego
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
         activation_link = f"{request.build_absolute_uri('/activate/')}?uid={uid}&token={token}"
@@ -1591,6 +1543,21 @@ def create_quiz_view(request, course_id, chapter_id):
         'chapter_id': chapter_id
     })
 
+def create_coding_view(request, course_id, chapter_id):
+    return render(request, 'create_coding.html', {
+        'title': 'Tworzenie zadania programistycznego',
+        'course_id': course_id,
+        'chapter_id': chapter_id
+    })
+
+def coding_page_detail_view(request, course_id, chapter_id, page_id):
+    return render(request, 'coding_page.html', {
+        'title': 'Coding',
+        'course_id': course_id,
+        'chapter_id': chapter_id,
+        'page_id': page_id
+    })  
+
 @login_required
 def edit_quiz_view(request, course_id, chapter_id, page_id):
     try:
@@ -1770,187 +1737,202 @@ def get_json_body(request):
     except json.JSONDecodeError:
         raise ValueError('Nieprawidłowy format JSON.')
 
-def send_code_to_interpreter(request):
+def run_code(request, file_extension, commands, extra_options=None):
     if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Invalid method. Use POST.'})
+        return JsonResponse({'success': False, 'error': 'Invalid request method. Use POST.'})
 
     try:
-        # Pobranie języka i kodu od użytkownika
-        language = request.POST.get('language', '')  # Język programowania (np. "javascript", "python")
-        code = request.POST.get('code', '')  # Kod do wykonania
+        if request.content_type == 'application/json':
+            data = get_json_body(request)  # Funkcja pomocnicza
+            code = data.get('code', '')
+        else:
+            code = request.POST.get('code', '')
 
         if not code.strip():
             return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
 
-        if not language.strip():
-            return JsonResponse({'success': False, 'error': 'Interpreter (language) nie został podany.'})
+        # Logika plików tymczasowych
+        temp_file = tempfile.NamedTemporaryFile(
+            suffix=file_extension, delete=False, dir='.', mode='w', encoding='utf-8'
+        )
+        temp_file.write(code)
+        temp_file.close()
 
-        # Nowy adres serwera
-        server_url = "http://ddnsareshxhost.ddns.net:5000/run"
+        # Przetwarzanie komend i uruchamianie
+        binary_file = extra_options.get('binary_file') if extra_options else None
+        if extra_options and extra_options.get('compile_needed'):
+            compile_command = extra_options.get('compile_command')
+            compile_process = subprocess.run(compile_command + [temp_file.name], capture_output=True, text=True)
+            if compile_process.returncode != 0:
+                raise RuntimeError(f"Kompilacja nieudana: {compile_process.stderr}")
 
-        # Dane wysyłane do serwera (JSON, klucze: "code", "interpreter")
-        payload = {
-            "code": code,
-            "interpreter": language
-        }
+        if binary_file:
+            commands.append(binary_file)
 
-        # Wysłanie żądania POST na serwer interpretujący
-        response = requests.post(
-            server_url,
-            json=payload,
-            headers={'Content-Type': 'application/json'}
+        process = subprocess.run(commands, capture_output=True, text=True)
+        return JsonResponse({
+            'success': process.returncode == 0,
+            'output': process.stdout,
+            'error': process.stderr
+        })
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f"Unexpected error: {str(e)}"})
+
+    finally:
+        if os.path.exists(temp_file.name):
+            os.unlink(temp_file.name)
+        if binary_file and os.path.exists(binary_file):
+            os.unlink(binary_file)
+
+
+# Widok dla języka Python
+def python_interpreter(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method. Use POST.'})
+
+    try:
+        # Odczyt JSON tylko raz
+        data = request.body.decode('utf-8') if request.content_type == 'application/json' else request.POST.get('code',
+                                                                                                                '')
+        if not data.strip():
+            return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
+
+        # Utwórz plik tymczasowy z kodem w Pythonie
+        with tempfile.NamedTemporaryFile(suffix='.py', delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(data)
+            temp_file_path = temp_file.name
+
+        # Uruchom kod w pliku tymczasowym przy użyciu subprocess
+        process = subprocess.run(
+            ['python', temp_file_path],
+            capture_output=True, text=True
         )
 
-        # Obsługa odpowiedzi z serwera
-        if response.status_code == 200:
-            server_data = response.json()
-            return JsonResponse({
-                'success': server_data.get('success', False),
-                'output': server_data.get('output', ''),
-                'error': server_data.get('error', '')
-            })
+        # Usuń plik tymczasowy po wykonaniu
+        os.unlink(temp_file_path)
+
+        if process.returncode == 0:
+            return JsonResponse({'success': True, 'output': process.stdout})
         else:
-            return JsonResponse({
-                'success': False,
-                'error': f"Serwer zwrócił błąd HTTP {response.status_code}: {response.text}"
-            })
-
-    except requests.exceptions.RequestException as e:
-        return JsonResponse({'success': False, 'error': f"Błąd sieciowy: {str(e)}"})
+            return JsonResponse({'success': False, 'error': process.stderr})
 
     except Exception as e:
-        return JsonResponse({'success': False, 'error': f"Nieoczekiwany błąd: {str(e)}"})
+        return JsonResponse({'success': False, 'error': f'Unexpected error: {str(e)}'})
 
-def code_form_view(request):
-    result = None
-
+# Widok dla PowerShell
+def powershell_interpreter(request):
     if request.method == 'POST':
-        # Otrzymujemy odpowiedź jako obiekt JsonResponse
-        response = send_code_to_interpreter(request)
-
-        # Dekodujemy dane JSON
-        result = json.loads(response.content)
-
-    return render(request, 'code_form.html', {'result': result})
-
-class AddCodingPageView(APIView):
-
-    def post(self, request, course_id, chapter_id):
-        data = request.data
-
-        # Tworzenie nowej strony typu CODING
-        page_data = {
-            "title": data.get("title"),
-            "type": "CODING",
-            "order": data.get("order"),
-        }
+        code = request.POST.get('code', '')
+        if not code.strip():
+            return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
 
         try:
-            page = Page.objects.create(
-                chapter_id=chapter_id,
-                **page_data
+            # Znajdowanie odpowiedniego PowerShell (classic lub Core)
+            executable = shutil.which("powershell") or shutil.which("pwsh")
+            if not executable:
+                return JsonResponse({'success': False, 'error': 'PowerShell executable not found in PATH.'})
+
+            # Tworzenie pliku tymczasowego z poleceniami PowerShell
+            with tempfile.NamedTemporaryFile(suffix='.ps1', delete=False, mode='w', encoding='utf-8') as temp_file:
+                temp_file.write(code)
+                temp_file.flush()
+                temp_file_path = temp_file.name
+
+            # Uruchomienie skryptu PowerShell
+            process = subprocess.run(
+                [executable, '-ExecutionPolicy', 'Bypass', '-File', temp_file_path],
+                capture_output=True, text=True, shell=False
             )
 
-            exercise_data = {
-                "description": data.get("description"),
-                "difficulty": data.get("difficulty", "medium"),
-                "initial_code": data.get("initial_code", ""),
-                "test_cases": data.get("test_cases", [])
-            }
+            # Usuwanie pliku tymczasowego
+            os.unlink(temp_file_path)
 
-            # Tworzenie zadania programistycznego
-            serializer = CodingExerciseSerializer(data=exercise_data)
-            if serializer.is_valid():
-                serializer.save(page=page)
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-            else:
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            if process.returncode != 0:
+                return JsonResponse({'success': False, 'error': process.stderr})
+
+            return JsonResponse({'success': True, 'output': process.stdout})
+
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({'success': False, 'error': str(e)})
+        finally:
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
 
-@api_view(['POST'])
-def submit_solution(request, course_id, chapter_id, page_id):
+    else:
+        return JsonResponse({'success': False, 'error': 'Invalid HTTP method. Use POST.'})
+
+
+def c_interpreter(request):
+    gcc_path = r"C:\msys64\ucrt64\bin\gcc.exe"
+    if not os.path.exists(gcc_path):
+        return JsonResponse({'success': False, 'error': 'Nie znaleziono GCC w podanej ścieżce.'})
+
+    return run_code(
+        request,
+        file_extension='.c',
+        commands=[],  # Puste, bo etap kompilacji określi plik wykonywalny
+        extra_options={
+            'compile_needed': True,
+            'compile_command': [gcc_path, '-o', 'program.exe', '-L', r"C:\msys64\ucrt64\lib"],
+            'binary_file': './program.exe'  # Nazwa wynikowego pliku wykonywalnego
+        }
+    )
+
+# Widok dla C#
+def csharp_interpreter(request):
+    return run_code(request, '.cs', ['dotnet', 'run'])
+
+
+# Widok dla języka Java
+def java_interpreter(request):
+    return run_code(
+        request,
+        file_extension='.java',
+        commands=['java', 'program'],  # Uruchomienie programu
+        extra_options={
+            'compile_needed': True,
+            'compile_command': ['javac'],
+            'binary_file': 'program.class'
+        }
+    )
+
+# Widok dla JavaScript
+def js_interpreter(request):
     try:
-        # Pobierz kod użytkownika i język programowanias
-        user_code = request.data.get('code', '')
-        language = request.data.get('language', 'python')  # Domyślny język to Python
+        # Upewnij się, że `node` jest dostępny
+        node_executable = shutil.which('node')
+        if not node_executable:
+            return JsonResponse(
+                {'success': False, 'error': 'Node.js executable not found in PATH. Please install Node.js.'})
 
-        # Sprawdź, czy kod nie jest pusty
-        if not user_code.strip():
-            return Response({"success": False, "error": "Kod nie może być pusty."}, status=status.HTTP_400_BAD_REQUEST)
+        # Uzyskaj kod JavaScript
+        data = get_json_body(request) if request.content_type == 'application/json' else request.POST
+        code = data.get('code', '').strip()
+        if not code:
+            return JsonResponse({'success': False, 'error': 'Kod nie może być pusty.'})
 
-        # Pobierz powiązane przypadki testowe
-        try:
-            exercise = CodingExercise.objects.get(page_id=page_id)
-            test_cases = TestCase.objects.filter(exercise=exercise).order_by('order')
-        except CodingExercise.DoesNotExist:
-            return Response({"success": False, "error": "Zadanie nie istnieje."}, status=status.HTTP_404_NOT_FOUND)
+        # Tworzenie pliku tymczasowego
+        with tempfile.NamedTemporaryFile(suffix='.js', delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(code)
+            temp_file_path = temp_file.name
 
-        # Przygotowanie wyników testów
-        results = []
-        all_tests_passed = True
+        # Uruchamianie kodu z użyciem subprocess
+        process = subprocess.run(
+            [node_executable, temp_file_path],
+            capture_output=True, text=True, shell=False
+        )
 
-        # Przetwarzanie każdej test_case
-        for test_case in test_cases:
-            # Przygotowanie kodu użytkownika z wejściem i oczekiwanym wyjściem
-            test_input_code = f"""
-{user_code}
+        # Usuwanie pliku tymczasowego
+        os.unlink(temp_file_path)
 
-# Wejście dla tego przypadku testowego
-input_data = \"\"\"{test_case.input_data}\"\"\"
+        if process.returncode != 0:
+            return JsonResponse({'success': False, 'error': process.stderr})
 
-# Oczekiwany wynik (dane dla porównania)
-expected_output = \"\"\"{test_case.expected_output}\"\"\"
-
-# Możesz tu dodać dodatkową logikę, jeśli to konieczne
-"""
-
-            # Przygotowanie payload dla interpretera
-            payload = {
-                "code": test_input_code,
-                "interpreter": language
-            }
-
-            # Wysłanie żądania POST do interpretera
-            response = requests.post(
-                "http://ddnsareshxhost.ddns.net:5000/run",
-                json=payload,
-                headers={'Content-Type': 'application/json'}
-            )
-
-            # Obsługa odpowiedzi z serwera
-            if response.status_code == 200:
-                interpreter_response = response.json()
-                test_output = interpreter_response.get('output',
-                                                       '').strip()  # Użycie wyniku zwróconego przez interpreter
-                test_result = {
-                    "input": test_case.input_data,
-                    "expected_output": test_case.expected_output,
-                    "success": test_output == test_case.expected_output.strip(),
-                    "output": test_output,
-                    "error": interpreter_response.get('error', '')
-                }
-            else:
-                test_result = {
-                    "input": test_case.input_data,
-                    "expected_output": test_case.expected_output,
-                    "success": False,
-                    "output": "",
-                    "error": f"HTTP error: {response.status_code}"
-                }
-
-            results.append(test_result)
-
-            # Jeśli jeden z testów się nie powiódł, oznacz testy jako niezaliczone
-            if not test_result["success"]:
-                all_tests_passed = False
-
-        # Zwróć odpowiedź widoku
-        return Response({
-            "success": all_tests_passed,
-            "results": results
-        }, status=status.HTTP_200_OK)
+        return JsonResponse({'success': True, 'output': process.stdout})
 
     except Exception as e:
-        # Zwróć informacje o nieoczekiwanym błędzie
-        return Response({"success": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonResponse({'success': False, 'error': str(e)})
+
+def interpreter_view(request):
+    return render(request, 'interpreter.html')

@@ -19,7 +19,8 @@
                             <li><a class="dropdown-item" href="{% url 'create_course' %}">Stwórz kurs</a></li>
                             <li><a class="dropdown-item" href="{% url 'profile' %}">Mój profil</a></li>
                             {% if user.is_superuser %}
-                                <li><a class="dropdown-item" href="{% url 'technology_management' %}">Dodaj technogie</a></li>
+                                <li><a class="dropdown-item" href="{% url 'technology_management' %}">Zarządzaj <br>technologiami</a></li>
+                                <li><a class="dropdown-item" href="{% url 'interpreter' %}">Interpreter</a></li>
                                 <li><a class="dropdown-item" href="{% url 'admin:index' %}">Panel administratora</a></li>
                             {% endif %}
                             <li>                                

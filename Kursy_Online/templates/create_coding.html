@@ -1,0 +1,239 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dodawanie strony z zadaniem programistycznym</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'styles.css' %}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+</head>
+<body>
+    <header>
+        {% include 'includes/navbar.html' %}
+    </header>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const CreateCodingPage = () => {
+            const [formData, setFormData] = React.useState({
+                title: '',
+                description: '',
+                solution: '',
+                order: 1
+            });
+            const [message, setMessage] = React.useState({ type: '', text: '' });
+            const [loading, setLoading] = React.useState(false);
+            const [existingOrders, setExistingOrders] = React.useState([]);
+            const [orderError, setOrderError] = React.useState('');
+
+            const courseId = window.location.pathname.split('/')[2];
+            const chapterId = window.location.pathname.split('/')[4];
+
+            // Get CSRF token from cookie
+            const getCSRFToken = () => {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === 'csrftoken') return value;
+                }
+                return '';
+            };
+
+            React.useEffect(() => {
+                fetchExistingPages();
+            }, []);
+
+            const fetchExistingPages = async () => {
+                try {
+                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/pages/`);
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch existing pages');
+                    }
+                    const pages = await response.json();
+                    const orders = pages.map(page => page.order);
+                    setExistingOrders(orders);
+                } catch (error) {
+                    setMessage({ type: 'error', text: 'Failed to fetch existing pages' });
+                }
+            };
+
+            const handleInputChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({
+                    ...prev,
+                    [name]: value
+                }));
+
+                if (name === 'order') {
+                    setOrderError('');
+                }
+            };
+
+            const validateOrder = (order) => {
+                const numericOrder = parseInt(order);
+                if (existingOrders.includes(numericOrder)) {
+                    return false;
+                }
+                return true;
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+
+                if (!validateOrder(formData.order)) {
+                    setOrderError('Ta kolejność jest już zajęta. Wybierz inną.');
+                    return;
+                }
+
+                setLoading(true);
+
+                try {
+                    const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}/coding/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCSRFToken()
+                        },
+                        body: JSON.stringify({
+                            title: formData.title,
+                            type: 'CONTENT',
+                            order: parseInt(formData.order),
+                            content_page: {
+                                description: formData.description,
+                                solution: formData.solution
+                            }
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to create coding exercise page');
+                    }
+
+                    const data = await response.json();
+                    setMessage({ 
+                        type: 'success', 
+                        text: 'Strona została utworzona pomyślnie! Za chwilę nastąpi przekierowanie...' 
+                    });
+                    
+                    // Redirect to media management after successful creation
+                    setTimeout(() => {
+                        window.location.href = `/courses/${courseId}/chapters/${chapterId}/pages/${data.id}/coding`;
+                    }, 2000);
+                } catch (error) {
+                    setMessage({ type: 'error', text: error.message });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="container my-5">
+                    <div className="row justify-content-center">
+                        <div className="col-md-8">
+                            <div className="card">
+                                <div className="card-header">
+                                    <h2 className="text-center mb-0">Dodawanie nowej strony z zadaniem programistycznym</h2>
+                                </div>
+                                <div className="card-body">
+                                    {message.text && (
+                                        <div className={`alert ${message.type === 'error' ? 'alert-danger' : 'alert-success'}`}>
+                                            {message.text}
+                                        </div>
+                                    )}
+
+                                    <form onSubmit={handleSubmit} className="needs-validation">
+                                        <div className="mb-3">
+                                            <label className="form-label">Nazwa zadania:</label>
+                                            <input
+                                                type="text"
+                                                name="title"
+                                                value={formData.title}
+                                                onChange={handleInputChange}
+                                                className="form-control"
+                                                required
+                                                maxLength="255"
+                                            />
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label">Treść:</label>
+                                            <textarea
+                                                name="description"
+                                                value={formData.description}
+                                                onChange={handleInputChange}
+                                                className="form-control"
+                                                rows="10"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label">Oczekiwany output</label>
+                                            <textarea
+                                                name="soludion"
+                                                value={formData.solution}
+                                                onChange={handleInputChange}
+                                                className="form-control"
+                                                rows="4"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="form-label">Kolejność:</label>
+                                            <input
+                                                type="number"
+                                                name="order"
+                                                value={formData.order}
+                                                onChange={handleInputChange}
+                                                className={`form-control ${orderError ? 'is-invalid' : ''}`}
+                                                min="1"
+                                                required
+                                            />
+                                            {orderError && (
+                                                <div className="invalid-feedback">
+                                                    {orderError}
+                                                </div>
+                                            )}
+                                            <small className="form-text text-muted">
+                                                Określa kolejność wyświetlania strony w dziale.
+                                                {existingOrders.length > 0 && (
+                                                    <span> Zajęte pozycje: {existingOrders.sort((a, b) => a - b).join(', ')}</span>
+                                                )}
+                                            </small>
+                                        </div>
+
+                                        <div className="d-grid gap-2">
+                                            <button
+                                                type="submit"
+                                                className="btn btn-primary"
+                                                disabled={loading}
+                                            >
+                                                {loading ? 'Tworzenie...' : 'Utwórz stronę'}
+                                            </button>
+                                            <a href={`/courses/${courseId}/chapters/${chapterId}`} className="btn btn-secondary">
+                                                Anuluj
+                                            </a>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CreateCodingPage />);
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

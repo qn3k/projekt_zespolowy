@@ -84,6 +84,9 @@ class IsModerator(permissions.BasePermission):
 
 class IsStudent(permissions.BasePermission):
     def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+            
         course_id = view.kwargs.get('course_pk')
         if not course_id:
             return True
@@ -94,12 +97,65 @@ class IsStudent(permissions.BasePermission):
         ).exists()
 
     def has_object_permission(self, request, view, obj):
+        if not request.user.is_authenticated:
+            return False
+            
         if hasattr(obj, 'course'):
             course = obj.course
         elif hasattr(obj, 'chapter'):
             course = obj.chapter.course
         else:
             course = obj
+
+        return Payment.objects.filter(
+            user=request.user,
+            course=course,
+            status='ACCEPTED'
+        ).exists()
+
+class CanSubmitSolution(permissions.BasePermission):
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+
+        if request.user.is_superuser or request.user.is_staff:
+            return True
+            
+        course_id = view.kwargs.get('course_pk')
+        if not course_id:
+            return True
+            
+        try:
+            course = Course.objects.get(id=course_id)
+
+            if request.user == course.instructor or request.user in course.moderators.all():
+                return True
+                
+        except Course.DoesNotExist:
+            return False
+            
+        return Payment.objects.filter(
+            user=request.user,
+            course_id=course_id,
+            status='ACCEPTED'
+        ).exists()
+
+    def has_object_permission(self, request, view, obj):
+        if not request.user.is_authenticated:
+            return False
+            
+        if request.user.is_superuser or request.user.is_staff:
+            return True
+            
+        if hasattr(obj, 'course'):
+            course = obj.course
+        elif hasattr(obj, 'chapter'):
+            course = obj.chapter.course
+        else:
+            course = obj
+
+        if request.user == course.instructor or request.user in course.moderators.all():
+            return True
 
         return Payment.objects.filter(
             user=request.user,
@@ -637,12 +693,12 @@ class PageViewSet(viewsets.ModelViewSet):
         if self.action in ['list', 'retrieve']:
             return [AllowAny()]
         elif self.action in ['create', 'update', 'partial_update', 'destroy',
-                             'add_quiz_question', 'add_content_image',
-                             'add_content_video', 'add_test_case', 'update_content',
-                             'update_order']:
+                            'add_quiz_question', 'add_content_image',
+                            'add_content_video', 'add_test_case', 'update_content',
+                            'update_order']:
             return [IsAuthenticated(), IsModerator()]
         elif self.action == 'submit_solution':
-            return [IsAuthenticated(), IsStudent()]
+            return [IsAuthenticated(), CanSubmitSolution()]  # Use the new permission
         return [IsAuthenticated()]
 
     def get_queryset(self):
@@ -651,6 +707,12 @@ class PageViewSet(viewsets.ModelViewSet):
         try:
             chapter = Chapter.objects.get(id=chapter_id)
             course = chapter.course
+
+            if not self.request.user.is_authenticated:
+                if self.action in ['list', 'retrieve']:
+                    return Page.objects.filter(chapter_id=chapter_id).only('id', 'title', 'type', 'order')
+                else:
+                    return Page.objects.none()
 
             if course.instructor == self.request.user or self.request.user in course.moderators.all():
                 return Page.objects.filter(chapter_id=chapter_id)
@@ -661,7 +723,7 @@ class PageViewSet(viewsets.ModelViewSet):
             return Page.objects.filter(chapter_id=chapter_id).only('id', 'title', 'type', 'order')
         except Chapter.DoesNotExist:
             return Page.objects.none()
-
+    
     def perform_create(self, serializer):
         chapter = Chapter.objects.get(id=self.kwargs.get('chapter_pk'))
         max_order = Page.objects.filter(chapter=chapter).aggregate(Max('order'))['order__max']
@@ -825,76 +887,111 @@ class PageViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        @action(detail=True, methods=['post'])
-        def submit_solution(self, request, course_pk=None, chapter_pk=None, pk=None):
-            logger.info("=== SUBMIT SOLUTION DEBUG ===")
-            logger.info(f"User: {request.user}")
-            logger.info(f"Request data: {request.data}")
-            
-            page = self.get_object()
-            logger.info(f"Page: {page.title} (ID: {page.id})")
-            
-            if page.type != 'CODING':
-                logger.error(f"Page type is {page.type}, not CODING")
-                return Response(
-                    {'error': 'Ta strona nie jest zadaniem programistycznym'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            try:
-                coding_exercise = CodingExercise.objects.get(page=page)
-                logger.info(f"Found coding exercise with {coding_exercise.test_cases.count()} test cases")
-            except CodingExercise.DoesNotExist:
-                logger.error("CodingExercise not found")
-                return Response(
-                    {'error': 'Zadanie programistyczne nie zostało znalezione'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            serializer = CodeSubmissionSerializer(data=request.data)
-            if not serializer.is_valid():
-                logger.error(f"Serializer errors: {serializer.errors}")
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-            user_code = serializer.validated_data['code']
-            logger.info(f"User code: {user_code}")
-            
-            test_cases = coding_exercise.test_cases.all()
-            logger.info(f"Test cases: {[(tc.input_data, tc.expected_output) for tc in test_cases]}")
-
-            if not test_cases.exists():
-                logger.error("No test cases found")
-                return Response(
-                    {'error': 'Brak przypadków testowych dla tego zadania'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            executor = CodeExecutionService()
-            results = executor.run_all_tests(
-                user_code,
-                [
-                    {
-                        'input_data': test.input_data,
-                        'expected_output': test.expected_output,
-                        'is_hidden': test.is_hidden
-                    }
-                    for test in test_cases
-                ]
+    @action(detail=True, methods=['post'])
+    def submit_solution(self, request, course_pk=None, chapter_pk=None, pk=None):
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info("=== SUBMIT SOLUTION DEBUG ===")
+        logger.info(f"User: {request.user}")
+        logger.info(f"Request data: {request.data}")
+        
+        page = self.get_object()
+        logger.info(f"Page: {page.title} (ID: {page.id})")
+        
+        if page.type != 'CODING':
+            logger.error(f"Page type is {page.type}, not CODING")
+            return Response(
+                {'error': 'Ta strona nie jest zadaniem programistycznym'},
+                status=status.HTTP_400_BAD_REQUEST
             )
+        
+        try:
+            coding_exercise = CodingExercise.objects.get(page=page)
+            logger.info(f"Found coding exercise with {coding_exercise.test_cases.count()} test cases")
+        except CodingExercise.DoesNotExist:
+            logger.error("CodingExercise not found")
+            return Response(
+                {'error': 'Zadanie programistyczne nie zostało znalezione'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Check if correct solution exists
+        if not coding_exercise.solution or not coding_exercise.solution.strip():
+            logger.error("No correct solution found")
+            return Response(
+                {'error': 'Brak wzorcowego rozwiązania dla tego zadania'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = CodeSubmissionSerializer(data=request.data)
+        if not serializer.is_valid():
+            logger.error(f"Serializer errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        user_code = serializer.validated_data['code']
+        logger.info(f"User code: {user_code}")
+        logger.info(f"Correct solution: {coding_exercise.solution}")
+        
+        test_cases = coding_exercise.test_cases.all()
+        logger.info(f"Test cases: {[(tc.input_data, tc.expected_output) for tc in test_cases]}")
+
+        if not test_cases.exists():
+            logger.error("No test cases found")
+            return Response(
+                {'error': 'Brak przypadków testowych dla tego zadania'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        executor = CodeExecutionService()
+        
+        # Use the new method that compares with correct solution
+        results = executor.run_all_tests_with_solution(
+            user_code,
+            coding_exercise.solution,  # Pass the correct solution
+            [
+                {
+                    'input_data': test.input_data,
+                    'is_hidden': test.is_hidden
+                }
+                for test in test_cases
+            ]
+        )
+        
+        logger.info(f"Execution results: {results}")
+
+        # Format results for frontend
+        formatted_results = {
+            'success': results['success'],
+            'test_results': []
+        }
+
+        for i, result in enumerate(results['results']):
+            test_result = {
+                'passed': result['success'],
+                'input': result.get('input', ''),
+                'is_hidden': result.get('is_hidden', False),
+                'error': result.get('error', None)
+            }
             
-            logger.info(f"Execution results: {results}")
+            # Only show expected/actual for visible test cases
+            if not result.get('is_hidden', False):
+                test_result['expected_output'] = result.get('expected_output', '')
+                test_result['actual_output'] = result.get('output', '')
+            
+            formatted_results['test_results'].append(test_result)
 
-            if results['success']:
-                UserProgress.objects.update_or_create(
-                    user=request.user,
-                    page=page,
-                    defaults={
-                        'completed': True,
-                        'completed_at': timezone.now()
-                    }
-                )
+        if results['success']:
+            UserProgress.objects.update_or_create(
+                user=request.user,
+                page=page,
+                defaults={
+                    'completed': True,
+                    'completed_at': timezone.now()
+                }
+            )
 
-            return Response(results)
+        return Response(formatted_results)
 
 @api_view(['GET'])
 def verify_email(request):

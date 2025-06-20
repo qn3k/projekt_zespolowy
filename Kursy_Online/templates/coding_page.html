@@ -160,7 +160,8 @@
                             'X-CSRFToken': getCSRFToken()
                         },
                         body: JSON.stringify({
-                            code: formData.code
+                            code: formData.code,
+                            language: formData.language
                         })
                     });
 
@@ -174,20 +175,6 @@
                     try {
                         const data = JSON.parse(responseText);
                         console.log('Parsed JSON response:', data);
-                        
-                        if (data.test_results) {
-                            console.log('=== TEST RESULTS ===');
-                            data.test_results.forEach((result, index) => {
-                                console.log(`Test ${index + 1}:`, {
-                                    input: result.input,
-                                    expected: result.expected_output,
-                                    actual: result.actual_output,
-                                    passed: result.passed,
-                                    error: result.error
-                                });
-                            });
-                        }
-                        
                         setTestResults(data);
                     } catch (jsonError) {
                         console.error('Failed to parse JSON:', jsonError);
@@ -251,14 +238,7 @@
                                         }} />
                                     </div>
                                     
-                                    {pageData?.coding_exercise?.solution && (
-                                        <div className="mb-3">
-                                            <h6>Oczekiwany wynik:</h6>
-                                            <div className="p-3 bg-light border rounded" style={textareaStyle}>
-                                                {pageData.coding_exercise.solution}
-                                            </div>
-                                        </div>
-                                    )}
+
                                     
                                     {pageData?.coding_exercise?.allowed_languages && pageData.coding_exercise.allowed_languages.length > 0 && (
                                         <div className="mb-3">
@@ -292,7 +272,7 @@
                                         {testResults.success ? (
                                             <div className="alert alert-success">
                                                 <h6>✅ Brawo, udało Ci się!</h6>
-                                                <p className="mb-0">Your solution is correct.</p>
+                                                <p className="mb-0">Twój program przeszedł pomyślnie wsyzstkie testy</p>
                                             </div>
                                         ) : (
                                             <div className="alert alert-danger">
